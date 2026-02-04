@@ -3,13 +3,21 @@ import { createClient } from '@supabase/supabase-js'
 import { nanoid } from 'nanoid'
 import { TIME_CONTROLS, DEFAULT_TIME_CONTROL } from '@/lib/constants'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+function getSupabaseClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  
+  if (!url || !key) {
+    throw new Error('Supabase credentials not configured')
+  }
+  
+  return createClient(url, key)
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabaseClient()
+    
     const body = await request.json()
     const { timeControl = DEFAULT_TIME_CONTROL.name, playerId, color = 'random' } = body
 
