@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,14 +13,18 @@ import {
   GameOverDialog 
 } from '@/components/chess'
 import { useGameStore } from '@/store/game-store'
-import { useGameRealtime } from '@/hooks/use-game-realtime'
+import { usePeerGame } from '@/hooks/use-peer-game'
 import { getOrCreatePlayerId, copyToClipboard } from '@/lib/utils/helpers'
 import { toast } from 'sonner'
 
 export default function GamePage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const gameId = params.id as string
   
+  const timeControl = searchParams.get('timeControl') || undefined
+  const color = searchParams.get('color') || undefined
+
   const [showGameOver, setShowGameOver] = useState(false)
   
   const {
@@ -39,7 +43,7 @@ export default function GamePage() {
     offerDraw,
     acceptDraw,
     handleTimeout,
-  } = useGameRealtime(gameId)
+  } = usePeerGame(gameId, { timeControl, color })
 
   // Initialize player ID
   useEffect(() => {

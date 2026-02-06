@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { TIME_CONTROLS, DEFAULT_TIME_CONTROL } from '@/lib/constants'
-import { getOrCreatePlayerId } from '@/lib/utils/helpers'
+import { getOrCreatePlayerId, generateGameId } from '@/lib/utils/helpers'
 
 export default function HomePage() {
   const router = useRouter()
@@ -30,20 +30,15 @@ export default function HomePage() {
     
     setIsCreating(true)
     try {
-      const response = await fetch('/api/games', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timeControl,
-          playerId,
-          color: colorPreference,
-        }),
-      })
+      // Generate ID client-side
+      const gameId = generateGameId()
 
-      const data = await response.json()
-      if (data.success) {
-        router.push(`/game/${data.gameId}`)
-      }
+      // Redirect with query params
+      const params = new URLSearchParams()
+      params.set('timeControl', timeControl)
+      params.set('color', colorPreference)
+
+      router.push(`/game/${gameId}?${params.toString()}`)
     } catch (error) {
       console.error('Failed to create game:', error)
     } finally {
