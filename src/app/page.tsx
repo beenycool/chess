@@ -18,32 +18,25 @@ export default function HomePage() {
   const router = useRouter()
   const [timeControl, setTimeControl] = useState(DEFAULT_TIME_CONTROL.name)
   const [colorPreference, setColorPreference] = useState<'random' | 'white' | 'black'>('random')
-  const [isCreating, setIsCreating] = useState(false)
   const [playerId, setPlayerId] = useState<string | null>(null)
 
   useEffect(() => {
     setPlayerId(getOrCreatePlayerId())
   }, [])
 
-  const handleCreateGame = async () => {
+  const handleCreateGame = () => {
     if (!playerId) return
     
-    setIsCreating(true)
-    try {
-      // Generate ID client-side
-      const gameId = generateGameId()
+    const gameId = generateGameId()
+    const params = new URLSearchParams()
+    params.set('timeControl', timeControl)
 
-      // Redirect with query params
-      const params = new URLSearchParams()
-      params.set('timeControl', timeControl)
-      params.set('color', colorPreference)
+    sessionStorage.setItem(
+      `game-options:${gameId}`,
+      JSON.stringify({ timeControl, color: colorPreference })
+    )
 
-      router.push(`/game/${gameId}?${params.toString()}`)
-    } catch (error) {
-      console.error('Failed to create game:', error)
-    } finally {
-      setIsCreating(false)
-    }
+    router.push(`/game/${gameId}?${params.toString()}`)
   }
 
   return (
@@ -88,9 +81,9 @@ export default function HomePage() {
             className="w-full" 
             size="lg" 
             onClick={handleCreateGame}
-            disabled={isCreating || !playerId}
+            disabled={!playerId}
           >
-            {isCreating ? 'Creating...' : 'Create Game'}
+            Create Game
           </Button>
 
           <p className="text-xs text-muted-foreground text-center">

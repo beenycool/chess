@@ -7,12 +7,23 @@ import { createInitialGame, processMove, tryJoinGame } from '@/lib/game-logic'
 import type { Game, GameState, Move } from '@/types/database'
 import Peer, { DataConnection } from 'peerjs'
 
+const validMessageTypes = new Set(['SYNC_GAME', 'JOIN_REQUEST', 'MAKE_MOVE', 'ACTION', 'ERROR'])
+
+function isValidMessage(data: unknown): data is Message {
+  if (!data || typeof data !== 'object') return false
+  if (!('type' in data)) return false
+  const typeValue = (data as { type?: unknown }).type
+  return typeof typeValue === 'string' && validMessageTypes.has(typeValue)
+}
+
 type Message =
  | { type: 'SYNC_GAME', payload: { game: Game, gameState: GameState, moves: Move[] } }
  | { type: 'JOIN_REQUEST', payload: { playerId: string, color?: 'white' | 'black' } }
  | { type: 'MAKE_MOVE', payload: { from: string, to: string, promotion?: string } }
- | { type: 'ACTION', payload: { action: string, playerId: string } }
+ | { type: 'ACTION', payload: { action: 'resign' | 'offer_draw' | 'accept_draw' | 'timeout', playerId: string, loser?: 'white' | 'black' } }
  | { type: 'ERROR', payload: string }
+
+type ActionPayload = Extract<Message, { type: 'ACTION' }>['payload']
 
 export function usePeerGame(
   gameId: string,
@@ -24,6 +35,7 @@ export function usePeerGame(
   const {
     game,
     gameState,
+    moves,
     playerId,
     setGame,
     setGameState,
@@ -32,12 +44,14 @@ export function usePeerGame(
     setPlayerId,
     setPlayerColor,
     setIsConnected,
+    setPendingDrawOffer,
     resetGame,
   } = useGameStore()
 
   const peerRef = useRef<Peer | null>(null)
   const hostConnRef = useRef<DataConnection | null>(null) // Guest's connection to Host
   const guestConnsRef = useRef<Map<string, DataConnection>>(new Map()) // Host's connections to Guests
+  const connPlayerMapRef = useRef<Map<string, string>>(new Map())
 
   // Store state in refs for access inside event handlers without dependencies
   const gameStateRef = useRef<{ game: Game | null, gameState: GameState | null, moves: Move[] }>({
@@ -48,7 +62,8 @@ export function usePeerGame(
   useEffect(() => {
     gameStateRef.current.game = game
     gameStateRef.current.gameState = gameState
-  }, [game, gameState])
+    gameStateRef.current.moves = moves
+  }, [game, gameState, moves])
 
   // Initialize Player ID
   useEffect(() => {
@@ -59,6 +74,7 @@ export function usePeerGame(
   // Cleanup on unmount
   useEffect(() => {
     const conns = guestConnsRef.current
+    const connPlayers = connPlayerMapRef.current
     return () => {
       resetGame()
       if (peerRef.current) {
@@ -67,6 +83,7 @@ export function usePeerGame(
       }
       hostConnRef.current = null
       conns.clear()
+      connPlayers.clear()
     }
   }, [resetGame])
 
@@ -86,6 +103,21 @@ export function usePeerGame(
     })
   }, [])
 
+  const broadcastExcept = useCallback((msg: Message, excludedPeerId?: string) => {
+    guestConnsRef.current.forEach((conn) => {
+      if (conn.peer === excludedPeerId) return
+      if (conn.open) {
+        conn.send(msg)
+      }
+    })
+  }, [])
+
+  const sendError = useCallback((conn: DataConnection, message: string) => {
+    if (conn.open) {
+      conn.send({ type: 'ERROR', payload: message })
+    }
+  }, [])
+
   // Sync state to specific guest (Host only)
   const syncStateToGuest = useCallback((conn: DataConnection) => {
     const { game, gameState, moves } = gameStateRef.current
@@ -97,30 +129,93 @@ export function usePeerGame(
     }
   }, [])
 
+  const buildSyncMessage = useCallback((gameData: Game, gameStateData: GameState, moveList: Move[]): Message => ({
+    type: 'SYNC_GAME',
+    payload: { game: gameData, gameState: gameStateData, moves: moveList }
+  }), [])
+
   // --- Message Handlers ---
 
-  const handleActionAsHost = useCallback((payload: { action: string, playerId: string }) => {
-    const { action, playerId: actionPlayerId } = payload
-    const { game } = gameStateRef.current
-    if (!game) return
+  const handleActionAsHost = useCallback((payload: ActionPayload, senderConn?: DataConnection) => {
+    const { action, playerId: actionPlayerId, loser } = payload
+    const { game, gameState, moves: currentMoves } = gameStateRef.current
+    if (!game || !gameState) return
+
+    if (senderConn) {
+      const senderPlayerId = connPlayerMapRef.current.get(senderConn.peer)
+      if (senderPlayerId !== actionPlayerId) {
+        sendError(senderConn, 'Unauthorized action')
+        return
+      }
+    } else if (actionPlayerId !== playerId) {
+      return
+    }
 
     if (action === 'resign') {
-        const winner = game.white_player_id === actionPlayerId ? 'black' : 'white'
-        const now = new Date().toISOString()
-        const updatedGame = {
-             ...game,
-             status: 'completed',
-             result: winner,
-             result_reason: 'resignation',
-             ended_at: now
-        }
-        setGame(updatedGame as Game)
-        guestConnsRef.current.forEach(c => syncStateToGuest(c))
+      const winner = game.white_player_id === actionPlayerId ? 'black' : 'white'
+      const now = new Date().toISOString()
+      const updatedGame: Game = {
+        ...game,
+        status: 'completed',
+        result: winner,
+        result_reason: 'resignation',
+        ended_at: now
+      }
+      setPendingDrawOffer(null)
+      setGame(updatedGame)
+      broadcast(buildSyncMessage(updatedGame, gameState, currentMoves))
+      return
     }
-  }, [setGame, syncStateToGuest])
 
-  const handleMessageAsHost = useCallback((msg: Message, _senderConn: DataConnection) => {
-    const { game, gameState } = gameStateRef.current
+    if (action === 'offer_draw') {
+      if (senderConn) {
+        setPendingDrawOffer('received')
+        broadcastExcept({ type: 'ACTION', payload: { action: 'offer_draw', playerId: actionPlayerId } }, senderConn.peer)
+      } else {
+        setPendingDrawOffer('sent')
+        broadcast({ type: 'ACTION', payload: { action: 'offer_draw', playerId: actionPlayerId } })
+      }
+      return
+    }
+
+    if (action === 'accept_draw') {
+      const now = new Date().toISOString()
+      const updatedGame: Game = {
+        ...game,
+        status: 'completed',
+        result: 'draw',
+        result_reason: 'agreement',
+        ended_at: now
+      }
+      setPendingDrawOffer(null)
+      setGame(updatedGame)
+      broadcast(buildSyncMessage(updatedGame, gameState, currentMoves))
+      return
+    }
+
+    if (action === 'timeout' && loser) {
+      const loserPlayerId = loser === 'white' ? game.white_player_id : game.black_player_id
+      if (loserPlayerId !== actionPlayerId) {
+        if (senderConn) sendError(senderConn, 'Unauthorized timeout')
+        return
+      }
+      const winner = loser === 'white' ? 'black' : 'white'
+      const now = new Date().toISOString()
+      const updatedGame: Game = {
+        ...game,
+        status: 'completed',
+        result: winner,
+        result_reason: 'timeout',
+        ended_at: now
+      }
+      setPendingDrawOffer(null)
+      setGame(updatedGame)
+      broadcast(buildSyncMessage(updatedGame, gameState, currentMoves))
+    }
+  }, [broadcast, broadcastExcept, buildSyncMessage, playerId, sendError, setGame, setPendingDrawOffer])
+
+  const handleMessageAsHost = useCallback((msg: Message, senderConn: DataConnection) => {
+    const { game, gameState, moves: currentMoves } = gameStateRef.current
     if (!game || !gameState) return
 
     switch (msg.type) {
@@ -129,10 +224,9 @@ export function usePeerGame(
         const result = tryJoinGame(game, reqPlayerId, color)
 
         if (result.success && result.game) {
+          connPlayerMapRef.current.set(senderConn.peer, reqPlayerId)
           setGame(result.game) // Update store
-
-          // Broadcast update
-          guestConnsRef.current.forEach(c => syncStateToGuest(c))
+          broadcast(buildSyncMessage(result.game, gameState, currentMoves))
         }
         break
       }
@@ -140,28 +234,36 @@ export function usePeerGame(
       case 'MAKE_MOVE': {
         const { from, to, promotion } = msg.payload
 
+        const senderPlayerId = connPlayerMapRef.current.get(senderConn.peer)
+        const expectedPlayerId = gameState.turn === 'w' ? game.white_player_id : game.black_player_id
+        if (!senderPlayerId || senderPlayerId !== expectedPlayerId) {
+          sendError(senderConn, 'Not authorized to move')
+          return
+        }
+
         const result = processMove(game, gameState, { from, to, promotion })
 
         if (result.success && result.newGameState && result.newMove) {
+          const updatedMoves = [...currentMoves, result.newMove]
           setGameState(result.newGameState)
           addMove(result.newMove)
 
+          const updatedGame = result.gameUpdate ? { ...game, ...result.gameUpdate } : game
           if (result.gameUpdate) {
-            setGame({ ...game, ...result.gameUpdate })
+            setGame(updatedGame)
           }
 
-          // Broadcast
-          guestConnsRef.current.forEach(c => syncStateToGuest(c))
+          broadcast(buildSyncMessage(updatedGame, result.newGameState, updatedMoves))
         }
         break
       }
 
       case 'ACTION': {
-         handleActionAsHost(msg.payload)
+         handleActionAsHost(msg.payload, senderConn)
          break
       }
     }
-  }, [handleActionAsHost, setGame, setGameState, addMove, syncStateToGuest])
+  }, [addMove, broadcast, buildSyncMessage, handleActionAsHost, sendError, setGame, setGameState])
 
   const handleMessageAsGuest = useCallback((msg: Message) => {
     switch (msg.type) {
@@ -170,22 +272,59 @@ export function usePeerGame(
         setGame(newGame)
         setGameState(newGameState)
         setMoves(newMoves)
+        if (newGame.status === 'completed') {
+          setPendingDrawOffer(null)
+        }
 
         if (newGame.white_player_id === playerId) setPlayerColor('white')
         else if (newGame.black_player_id === playerId) setPlayerColor('black')
         else setPlayerColor(null)
         break
       }
+      case 'ACTION': {
+        if (msg.payload.action === 'offer_draw') {
+          setPendingDrawOffer('received')
+        }
+        if (msg.payload.action === 'accept_draw') {
+          setPendingDrawOffer(null)
+        }
+        break
+      }
+      case 'ERROR': {
+        setError(msg.payload)
+        break
+      }
     }
-  }, [playerId, setGame, setGameState, setMoves, setPlayerColor])
+  }, [playerId, setGame, setGameState, setMoves, setPendingDrawOffer, setPlayerColor])
 
+  const handleMessageAsHostRef = useRef(handleMessageAsHost)
+  const handleMessageAsGuestRef = useRef(handleMessageAsGuest)
+
+  useEffect(() => {
+    handleMessageAsHostRef.current = handleMessageAsHost
+  }, [handleMessageAsHost])
+
+  useEffect(() => {
+    handleMessageAsGuestRef.current = handleMessageAsGuest
+  }, [handleMessageAsGuest])
 
   // Initialize Peer
   useEffect(() => {
     if (!gameId || !playerId || peerRef.current) return
 
     const initPeer = async () => {
-      const peer = new Peer(gameId)
+      const peerOptions: ConstructorParameters<typeof Peer>[1] = {}
+      if (process.env.NEXT_PUBLIC_PEERJS_HOST) {
+        peerOptions.host = process.env.NEXT_PUBLIC_PEERJS_HOST
+      }
+      if (process.env.NEXT_PUBLIC_PEERJS_PATH) {
+        peerOptions.path = process.env.NEXT_PUBLIC_PEERJS_PATH
+      }
+      if (process.env.NEXT_PUBLIC_PEERJS_PORT) {
+        peerOptions.port = Number(process.env.NEXT_PUBLIC_PEERJS_PORT)
+      }
+
+      const peer = new Peer(gameId, Object.keys(peerOptions).length ? peerOptions : undefined)
 
       peer.on('open', (id) => {
         console.log('Opened peer as Host:', id)
@@ -195,7 +334,7 @@ export function usePeerGame(
         if (initialOptions) {
           const { game: newGame, gameState: newGameState } = createInitialGame(gameId, {
             timeControlName: initialOptions.timeControl || '10+0',
-            colorPreference: (initialOptions.color as any) || 'random',
+            colorPreference: (initialOptions.color as 'white' | 'black' | 'random') || 'random',
             hostPlayerId: playerId
           })
 
@@ -217,11 +356,16 @@ export function usePeerGame(
         })
 
         conn.on('data', (data: unknown) => {
-          handleMessageAsHost(data as Message, conn)
+          if (!isValidMessage(data)) {
+            console.warn('Invalid message received from guest', data)
+            return
+          }
+          handleMessageAsHostRef.current(data, conn)
         })
 
         conn.on('close', () => {
           guestConnsRef.current.delete(conn.peer)
+          connPlayerMapRef.current.delete(conn.peer)
         })
       })
 
@@ -241,7 +385,18 @@ export function usePeerGame(
     }
 
     const joinAsGuest = () => {
-      const peer = new Peer()
+      const peerOptions: ConstructorParameters<typeof Peer>[1] = {}
+      if (process.env.NEXT_PUBLIC_PEERJS_HOST) {
+        peerOptions.host = process.env.NEXT_PUBLIC_PEERJS_HOST
+      }
+      if (process.env.NEXT_PUBLIC_PEERJS_PATH) {
+        peerOptions.path = process.env.NEXT_PUBLIC_PEERJS_PATH
+      }
+      if (process.env.NEXT_PUBLIC_PEERJS_PORT) {
+        peerOptions.port = Number(process.env.NEXT_PUBLIC_PEERJS_PORT)
+      }
+
+      const peer = Object.keys(peerOptions).length ? new Peer(peerOptions) : new Peer()
 
       peer.on('open', (id) => {
         console.log('Opened peer as Guest:', id)
@@ -256,7 +411,11 @@ export function usePeerGame(
         })
 
         conn.on('data', (data: unknown) => {
-          handleMessageAsGuest(data as Message)
+          if (!isValidMessage(data)) {
+            console.warn('Invalid message received from host', data)
+            return
+          }
+          handleMessageAsGuestRef.current(data)
         })
 
         conn.on('close', () => {
@@ -281,7 +440,7 @@ export function usePeerGame(
     }
 
     initPeer()
-  }, [gameId, playerId, initialOptions, setGame, setGameState, setMoves, setPlayerColor, setIsConnected, syncStateToGuest, handleMessageAsHost, handleMessageAsGuest])
+  }, [gameId, playerId, initialOptions, setGame, setGameState, setMoves, setPlayerColor, setIsConnected, syncStateToGuest])
 
 
   // --- Public Interface ---
@@ -303,6 +462,7 @@ export function usePeerGame(
         }
         return { success: false, error: 'Failed to join' }
     } else {
+        if (!playerId) return { success: false, error: 'Player ID not initialized' }
         sendToHost({
             type: 'JOIN_REQUEST',
             payload: { playerId, color }
@@ -351,16 +511,32 @@ export function usePeerGame(
   }, [isHost, playerId, sendToHost, handleActionAsHost])
 
   const offerDraw = useCallback(async () => {
-     // Implement draw offer logic
-  }, [])
+     if (!playerId) return
+     setPendingDrawOffer('sent')
+     if (isHost) {
+       broadcast({ type: 'ACTION', payload: { action: 'offer_draw', playerId } })
+     } else {
+       sendToHost({ type: 'ACTION', payload: { action: 'offer_draw', playerId } })
+     }
+  }, [broadcast, isHost, playerId, sendToHost, setPendingDrawOffer])
 
   const acceptDraw = useCallback(async () => {
-     // Implement accept draw logic
-  }, [])
+     if (!playerId) return
+     if (isHost) {
+       handleActionAsHost({ action: 'accept_draw', playerId })
+     } else {
+       sendToHost({ type: 'ACTION', payload: { action: 'accept_draw', playerId } })
+     }
+  }, [handleActionAsHost, isHost, playerId, sendToHost])
 
-  const handleTimeout = useCallback(async (_loser: 'white' | 'black') => {
-      // similar to resign
-  }, [])
+  const handleTimeout = useCallback(async (loser: 'white' | 'black') => {
+     if (!playerId) return
+     if (isHost) {
+       handleActionAsHost({ action: 'timeout', playerId, loser })
+     } else {
+       sendToHost({ type: 'ACTION', payload: { action: 'timeout', playerId, loser } })
+     }
+  }, [handleActionAsHost, isHost, playerId, sendToHost])
 
   return {
     error,

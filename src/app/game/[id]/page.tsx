@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import {
 } from '@/components/chess'
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
-import { getOrCreatePlayerId, copyToClipboard } from '@/lib/utils/helpers'
+import { copyToClipboard } from '@/lib/utils/helpers'
 import { toast } from 'sonner'
 
 export default function GamePage() {
@@ -22,8 +22,18 @@ export default function GamePage() {
   const searchParams = useSearchParams()
   const gameId = params.id as string
   
-  const timeControl = searchParams.get('timeControl') || undefined
-  const color = searchParams.get('color') || undefined
+  const storedOptions = useMemo(() => {
+    const rawOptions = sessionStorage.getItem(`game-options:${gameId}`)
+    if (!rawOptions) return null
+    try {
+      return JSON.parse(rawOptions) as { timeControl?: string, color?: 'white' | 'black' | 'random' }
+    } catch {
+      return null
+    }
+  }, [gameId])
+
+  const timeControl = searchParams.get('timeControl') || storedOptions?.timeControl || undefined
+  const color = storedOptions?.color || undefined
 
   const [showGameOver, setShowGameOver] = useState(false)
   
@@ -32,9 +42,12 @@ export default function GamePage() {
     gameState,
     playerColor,
     isConnected,
-    setPlayerId,
-    resetGame,
   } = useGameStore()
+
+  const peerOptions = useMemo(
+    () => timeControl || color ? { timeControl, color } : undefined,
+    [timeControl, color]
+  )
 
   const {
     makeMove,
@@ -43,17 +56,7 @@ export default function GamePage() {
     offerDraw,
     acceptDraw,
     handleTimeout,
-  } = usePeerGame(gameId, { timeControl, color })
-
-  // Initialize player ID
-  useEffect(() => {
-    const id = getOrCreatePlayerId()
-    setPlayerId(id)
-    
-    return () => {
-      resetGame()
-    }
-  }, [setPlayerId, resetGame])
+  } = usePeerGame(gameId, peerOptions)
 
   // Show game over dialog when game ends
   useEffect(() => {
@@ -116,6 +119,7 @@ export default function GamePage() {
 
   const isWaitingForOpponent = game.status === 'waiting'
   const isSpectator = playerColor === null && game.status !== 'waiting'
+  const viewColor = playerColor ?? 'white'
 
   return (
     <main className="min-h-screen p-4">
@@ -181,12 +185,12 @@ export default function GamePage() {
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-slate-800 border border-slate-600" />
                 <span className="font-medium">
-                  {playerColor === 'white' ? 'Black' : 'White'}
+                  {viewColor === 'white' ? 'Black' : 'White'}
                 </span>
               </div>
               <ChessClock 
-                color={playerColor === 'white' ? 'black' : 'white'} 
-                onTimeout={playerColor === 'white' ? handleBlackTimeout : handleWhiteTimeout}
+                color={viewColor === 'white' ? 'black' : 'white'} 
+                onTimeout={viewColor === 'white' ? handleBlackTimeout : handleWhiteTimeout}
               />
             </div>
 
@@ -201,12 +205,13 @@ export default function GamePage() {
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-white border border-slate-300" />
                 <span className="font-medium">
-                  {playerColor === 'white' ? 'White (You)' : playerColor === 'black' ? 'Black (You)' : 'White'}
+                  {viewColor === 'white' ? 'White' : 'Black'}
+                  {playerColor && ' (You)'}
                 </span>
               </div>
               <ChessClock 
-                color={playerColor === 'black' ? 'black' : 'white'}
-                onTimeout={playerColor === 'black' ? handleBlackTimeout : handleWhiteTimeout}
+                color={viewColor}
+                onTimeout={viewColor === 'white' ? handleWhiteTimeout : handleBlackTimeout}
               />
             </div>
           </div>

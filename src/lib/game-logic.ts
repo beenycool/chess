@@ -9,7 +9,8 @@ export interface GameOptions {
 }
 
 export function createInitialGame(gameId: string, options: GameOptions): { game: Game, gameState: GameState } {
-  const timeControl = TIME_CONTROLS.find(tc => tc.name === options.timeControlName) || TIME_CONTROLS[6] // Default 10+0
+  const defaultTimeControl = TIME_CONTROLS.find(tc => tc.name === '10+0') || TIME_CONTROLS[0]
+  const timeControl = TIME_CONTROLS.find(tc => tc.name === options.timeControlName) || defaultTimeControl
 
   const now = new Date().toISOString()
 
@@ -97,16 +98,52 @@ export function processMove(
     let newWhiteTime = gameState.white_time_ms
     let newBlackTime = gameState.black_time_ms
 
+    let timeoutUpdate: Partial<Game> | null = null
+
     // Only deduct time if game is active and not the first move of the game
     if (gameState.last_move_at) {
       const timeSinceLastMove = Date.now() - new Date(gameState.last_move_at).getTime()
 
       if (isWhite) {
-        newWhiteTime = Math.max(0, gameState.white_time_ms - timeSinceLastMove)
-        newWhiteTime += game.increment_ms
+        const timeAfterDeduction = gameState.white_time_ms - timeSinceLastMove
+        if (timeAfterDeduction <= 0) {
+          newWhiteTime = 0
+          timeoutUpdate = {
+            status: 'completed',
+            result: 'black',
+            result_reason: 'timeout',
+            ended_at: now,
+          }
+        } else {
+          newWhiteTime = timeAfterDeduction + game.increment_ms
+        }
       } else {
-        newBlackTime = Math.max(0, gameState.black_time_ms - timeSinceLastMove)
-        newBlackTime += game.increment_ms
+        const timeAfterDeduction = gameState.black_time_ms - timeSinceLastMove
+        if (timeAfterDeduction <= 0) {
+          newBlackTime = 0
+          timeoutUpdate = {
+            status: 'completed',
+            result: 'white',
+            result_reason: 'timeout',
+            ended_at: now,
+          }
+        } else {
+          newBlackTime = timeAfterDeduction + game.increment_ms
+        }
+      }
+    } else if (game.started_at && isWhite) {
+      const timeSinceStart = Date.now() - new Date(game.started_at).getTime()
+      const timeAfterDeduction = gameState.white_time_ms - timeSinceStart
+      if (timeAfterDeduction <= 0) {
+        newWhiteTime = 0
+        timeoutUpdate = {
+          status: 'completed',
+          result: 'black',
+          result_reason: 'timeout',
+          ended_at: now,
+        }
+      } else {
+        newWhiteTime = timeAfterDeduction + game.increment_ms
       }
     }
 
@@ -156,7 +193,9 @@ export function processMove(
 
     let gameUpdate: Partial<Game> | undefined = undefined
 
-    if (isCheckmate || isStalemate || isDraw) {
+    if (timeoutUpdate) {
+      gameUpdate = timeoutUpdate
+    } else if (isCheckmate || isStalemate || isDraw) {
       let result: string | null = null
       let resultReason: string | null = null
 
