@@ -3,7 +3,7 @@
 import { Game } from "@/types/database"
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/use-auth'
-import { supabase } from '@/lib/supabase'
+import { createBrowserSupabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -11,10 +11,16 @@ import { History, TrendingUp, User as UserIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
+type GameWithPlayers = Game & {
+  white: { username: string; elo: number } | null
+  black: { username: string; elo: number } | null
+}
+
 export default function ProfilePage() {
   const { user, profile, loading: authLoading } = useAuth()
-  const [games, setGames] = useState<Game[]>([])
+  const [games, setGames] = useState<GameWithPlayers[]>([])
   const [loading, setLoading] = useState(true)
+  const supabase = createBrowserSupabase()
 
   const fetchGameHistory = useCallback(async () => {
     if (!user) return
@@ -30,14 +36,14 @@ export default function ProfilePage() {
       .limit(20)
 
     if (!error && data) {
-      setGames(data as any)
+      setGames(data as unknown as GameWithPlayers[])
     }
     setLoading(false)
-  }, [user])
+  }, [user, supabase])
 
   useEffect(() => {
     if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       fetchGameHistory()
     } else if (!authLoading) {
       setLoading(false)
@@ -130,7 +136,7 @@ export default function ProfilePage() {
                     const isWhite = game.white_id === user.id
                     const myResult = game.result === 'draw' ? 'draw' :
                       (isWhite && game.result === 'white') || (!isWhite && game.result === 'black') ? 'win' : 'loss'
-                    const opponent = isWhite ? (game as any).black : (game as any).white
+                    const opponent = isWhite ? game.black : game.white
 
                     return (
                       <div key={game.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors">
@@ -144,7 +150,7 @@ export default function ProfilePage() {
                             </span>
                           </div>
                           <div className="mt-2 font-medium">
-                            vs {opponent?.username || 'Guest'} ({opponent?.elo || 1200})
+                            vs {opponent?.username || 'Guest'} ({opponent?.elo ?? 1200})
                           </div>
                           <div className="text-xs text-muted-foreground mt-1">
                             {game.result_reason} • Played as {isWhite ? 'White' : 'Black'}

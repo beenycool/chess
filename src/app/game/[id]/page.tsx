@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,15 @@ export default function GamePage() {
   const gameId = params.id as string
   
   const storedOptions = useMemo(() => {
+    // Check URL params first (if provided)
+    const urlTC = searchParams.get('timeControl')
+    const urlColor = searchParams.get('color')
+    if (urlTC) {
+        return { timeControl: urlTC, color: (urlColor as 'white' | 'black' | 'random') || 'random' }
+    }
+
+    // Fallback to session storage
+    if (typeof window === 'undefined') return null
     const rawOptions = sessionStorage.getItem(`game-options:${gameId}`)
     if (!rawOptions) return null
     try {
@@ -30,19 +39,20 @@ export default function GamePage() {
     } catch {
       return null
     }
-  }, [gameId])
+  }, [gameId, searchParams])
 
-  const timeControl = searchParams.get('timeControl') || storedOptions?.timeControl || undefined
+  const timeControl = storedOptions?.timeControl || undefined
   const color = storedOptions?.color || undefined
 
-  const [showGameOver, setShowGameOver] = useState(false)
-  
   const {
     game,
     gameState,
     playerColor,
     isConnected,
   } = useGameStore()
+
+  // Derived state for game over dialog
+  const showGameOver = game?.status === 'completed'
 
   const peerOptions = useMemo(
     () => timeControl || color ? { timeControl, color } : undefined,
@@ -58,13 +68,7 @@ export default function GamePage() {
     handleTimeout,
   } = usePeerGame(gameId, peerOptions)
 
-  // Show game over dialog when game ends
-  useEffect(() => {
-    if (game?.status === 'completed') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShowGameOver(true)
-    }
-  }, [game?.status])
+
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
@@ -91,7 +95,7 @@ export default function GamePage() {
     if (!result.success) {
       toast.error(result.error || 'Invalid move')
     }
-    return result
+    return { success: result.success } // makeMove might return pending
   }, [makeMove])
 
   const handleWhiteTimeout = useCallback(() => {
