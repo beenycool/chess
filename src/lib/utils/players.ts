@@ -16,6 +16,7 @@ type StoredPlayer = PlayerProfile & {
 }
 
 const PLAYERS_KEY = 'chess_players'
+const REMOTE_PLAYERS_KEY = 'chess_remote_players'
 const CURRENT_PLAYER_KEY = 'chess_current_player'
 const PLAYER_EVENT = 'chess-player-update'
 const EMPTY_PLAYERS: StoredPlayer[] = []
@@ -24,6 +25,8 @@ const EMPTY_PUBLIC_PROFILES: PlayerProfile[] = []
 let cachedPlayersRaw: string | null = null
 let cachedPlayers: StoredPlayer[] = EMPTY_PLAYERS
 let cachedPublicPlayers: PlayerProfile[] = EMPTY_PUBLIC_PROFILES
+let cachedRemotePlayersRaw: string | null = null
+let cachedRemotePlayers: PlayerProfile[] = EMPTY_PUBLIC_PROFILES
 
 const defaultStats = (): PlayerStats => ({
   games: 0,
@@ -40,6 +43,7 @@ const normalizeUsername = (username: string) => username.trim().toLowerCase()
 const filterUsernameCharacters = (username: string) => username.replace(/[^a-z0-9_-]/g, '')
 const getUsernameKey = (username: string) => filterUsernameCharacters(normalizeUsername(username))
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL?.trim()
 
 const notifyPlayers = () => {
   if (!isBrowser()) return
@@ -62,6 +66,16 @@ const normalizeStoredPlayer = (player: StoredPlayer): StoredPlayer => ({
 const toPublicProfile = (player: StoredPlayer): PlayerProfile => ({
   username: player.username,
   stats: player.stats,
+})
+
+const normalizePublicProfile = (player: PlayerProfile): PlayerProfile => ({
+  username: getUsernameKey(player.username ?? ''),
+  stats: {
+    games: player.stats?.games ?? 0,
+    wins: player.stats?.wins ?? 0,
+    losses: player.stats?.losses ?? 0,
+    draws: player.stats?.draws ?? 0,
+  },
 })
 
 const PASSWORD_ITERATIONS = 600_000
@@ -138,12 +152,75 @@ const getStoredPlayerData = (): StoredPlayer[] => {
 export const getStoredPlayers = (): PlayerProfile[] => {
   if (!isBrowser()) return EMPTY_PUBLIC_PROFILES
   getStoredPlayerData()
-  return cachedPublicPlayers
+  const remotePlayers = getRemotePlayers()
+  if (!remotePlayers.length) return cachedPublicPlayers
+  const merged = new Map<string, PlayerProfile>()
+  cachedPublicPlayers.forEach((player) => {
+    merged.set(getUsernameKey(player.username), player)
+  })
+  remotePlayers.forEach((player) => {
+    merged.set(getUsernameKey(player.username), player)
+  })
+  return Array.from(merged.values())
 }
 
 const savePlayers = (players: StoredPlayer[]) => {
   if (!isBrowser()) return
   localStorage.setItem(PLAYERS_KEY, JSON.stringify(players))
+}
+
+const getRemotePlayers = (): PlayerProfile[] => {
+  if (!isBrowser()) return EMPTY_PUBLIC_PROFILES
+  const raw = localStorage.getItem(REMOTE_PLAYERS_KEY) ?? '[]'
+  if (raw === cachedRemotePlayersRaw) return cachedRemotePlayers
+  cachedRemotePlayersRaw = raw
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      cachedRemotePlayers = EMPTY_PUBLIC_PROFILES
+      return cachedRemotePlayers
+    }
+    cachedRemotePlayers = parsed.map((player) => normalizePublicProfile(player as PlayerProfile))
+    return cachedRemotePlayers
+  } catch {
+    cachedRemotePlayers = EMPTY_PUBLIC_PROFILES
+    return cachedRemotePlayers
+  }
+}
+
+const saveRemotePlayers = (players: PlayerProfile[]) => {
+  if (!isBrowser()) return
+  cachedRemotePlayers = players.map((player) => normalizePublicProfile(player))
+  cachedRemotePlayersRaw = JSON.stringify(cachedRemotePlayers)
+  localStorage.setItem(REMOTE_PLAYERS_KEY, cachedRemotePlayersRaw)
+}
+
+const mergeRemotePlayers = (players: PlayerProfile[]) => {
+  const map = new Map<string, PlayerProfile>()
+  getRemotePlayers().forEach((player) => {
+    map.set(getUsernameKey(player.username), player)
+  })
+  players.forEach((player) => {
+    map.set(getUsernameKey(player.username), normalizePublicProfile(player))
+  })
+  const merged = Array.from(map.values())
+  saveRemotePlayers(merged)
+  return merged
+}
+
+const fetchBackend = async <T,>(path: string, options?: RequestInit): Promise<T | null> => {
+  if (!BACKEND_URL) return null
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    })
+    const data = (await response.json()) as T
+    if (!response.ok) return null
+    return data
+  } catch {
+    return null
+  }
 }
 
 export const subscribePlayers = (callback: () => void) => {
@@ -166,6 +243,13 @@ export const getCurrentPlayer = (): PlayerProfile | null => {
   return cachedPublicPlayers.find((player) => getUsernameKey(player.username) === usernameKey) ?? null
 }
 
+export const syncPlayersFromBackend = async () => {
+  const data = await fetchBackend<{ players?: PlayerProfile[] }>('/players')
+  if (!data?.players) return
+  mergeRemotePlayers(data.players)
+  notifyPlayers()
+}
+
 export const signInPlayer = async (
   username: string,
   password: string
@@ -176,6 +260,37 @@ export const signInPlayer = async (
     return { success: false, error: 'Use only letters, numbers, dashes, and underscores.' }
   }
   if (!password) return { success: false, error: 'Password is required.' }
+
+  if (BACKEND_URL) {
+    const data = await fetchBackend<{ player?: PlayerProfile; error?: string }>('/auth/sign-in', {
+      method: 'POST',
+      body: JSON.stringify({ username: normalizedUsername, password }),
+    })
+    if (!data || data.error || !data.player) {
+      return { success: false, error: data?.error || 'Unable to sign in.' }
+    }
+    const remotePlayer = normalizePublicProfile(data.player)
+    const players = getStoredPlayerData()
+    const existingIndex = players.findIndex(
+      (player) => getUsernameKey(player.username) === remotePlayer.username
+    )
+    const updatedPlayer: StoredPlayer = {
+      username: remotePlayer.username,
+      password: '',
+      salt: '',
+      stats: remotePlayer.stats,
+    }
+    if (existingIndex >= 0) {
+      players[existingIndex] = { ...players[existingIndex], ...updatedPlayer }
+    } else {
+      players.push(updatedPlayer)
+    }
+    savePlayers(players)
+    mergeRemotePlayers([remotePlayer])
+    localStorage.setItem(CURRENT_PLAYER_KEY, remotePlayer.username)
+    notifyPlayers()
+    return { success: true, player: remotePlayer }
+  }
 
   const players = getStoredPlayerData()
   const existingIndex = players.findIndex(
@@ -284,5 +399,16 @@ export const updatePlayerStats = (
   updatedPlayers[index] = updatedPlayer
   savePlayers(updatedPlayers)
   notifyPlayers()
+  if (BACKEND_URL) {
+    void fetchBackend<{ player?: PlayerProfile }>(`/players/${usernameKey}/result`, {
+      method: 'POST',
+      body: JSON.stringify({ result }),
+    }).then((data) => {
+      if (data?.player) {
+        mergeRemotePlayers([data.player])
+        notifyPlayers()
+      }
+    })
+  }
   return toPublicProfile(updatedPlayer)
 }

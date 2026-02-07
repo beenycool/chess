@@ -20,6 +20,7 @@ import {
   getWinRate,
   signOutPlayer,
   subscribePlayers,
+  syncPlayersFromBackend,
   type PlayerProfile,
 } from '@/lib/utils/players'
 
@@ -46,6 +47,10 @@ export default function HomePage() {
 
   useEffect(() => {
     setPlayerId(getOrCreatePlayerId())
+  }, [])
+
+  useEffect(() => {
+    void syncPlayersFromBackend()
   }, [])
 
   const handleCreateGame = () => {
