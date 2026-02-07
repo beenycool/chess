@@ -76,11 +76,14 @@ export default function GamePage() {
     if (!game.result) return
     if (!playerColor || !currentPlayer) return
 
-    const result = game.result === 'draw'
-      ? 'draw'
-      : game.result === playerColor
-        ? 'win'
-        : 'loss'
+    let result: 'win' | 'loss' | 'draw'
+    if (game.result === 'draw') {
+      result = 'draw'
+    } else if (game.result === playerColor) {
+      result = 'win'
+    } else {
+      result = 'loss'
+    }
 
     updatePlayerStats(currentPlayer.username, result)
     statsRecordedRef.current = true

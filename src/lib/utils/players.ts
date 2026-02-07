@@ -19,8 +19,6 @@ const EMPTY_PLAYERS: PlayerProfile[] = []
 
 let cachedPlayersRaw: string | null = null
 let cachedPlayers: PlayerProfile[] = EMPTY_PLAYERS
-let cachedCurrentUsername: string | null = null
-let cachedCurrentPlayer: PlayerProfile | null = null
 
 const defaultStats = (): PlayerStats => ({
   games: 0,
@@ -71,6 +69,7 @@ const hashLegacyPassword = async (value: string) => {
   return bytesToHex(new Uint8Array(hashBuffer))
 }
 
+// PBKDF2 hash using a hex-encoded salt, returning a hex digest or null if unavailable.
 const hashPassword = async (value: string, salt: string) => {
   if (!isBrowser() || !globalThis.crypto?.subtle) return null
   const baseKey = await globalThis.crypto.subtle.importKey(
@@ -141,12 +140,7 @@ export const getCurrentPlayer = (): PlayerProfile | null => {
   if (!username) return null
   const players = getStoredPlayers()
   const normalizedUsername = normalizeUsername(username)
-  if (normalizedUsername === cachedCurrentUsername && cachedCurrentPlayer && players.includes(cachedCurrentPlayer)) {
-    return cachedCurrentPlayer
-  }
-  cachedCurrentUsername = normalizedUsername
-  cachedCurrentPlayer = players.find((player) => normalizeUsername(player.username) === normalizedUsername) ?? null
-  return cachedCurrentPlayer
+  return players.find((player) => normalizeUsername(player.username) === normalizedUsername) ?? null
 }
 
 export const signInPlayer = async (
