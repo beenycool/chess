@@ -246,8 +246,12 @@ const getCurrentProfile = (): PlayerProfile | null => {
 const fetchBackend = async <T>(path: string, options?: RequestInit): Promise<T | null> => {
   if (!BACKEND_URL) return null
   try {
+    const headers = new Headers(options?.headers)
+    if (options?.body) {
+      headers.set('Content-Type', 'application/json')
+    }
     const response = await fetch(`${BACKEND_URL}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       ...options,
     })
     if (!response.ok) {

@@ -35,6 +35,7 @@ Environment variables:
 - `MAX_BODY_BYTES` (default `1048576`)
 
 Once deployed, point the frontend to your backend by setting `NEXT_PUBLIC_BACKEND_URL` to the Render service URL.
+In production, set `CORS_ORIGIN` to your frontend origin.
 
 ## Learn More
 
