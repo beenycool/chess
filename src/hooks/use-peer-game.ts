@@ -5,7 +5,8 @@ import { useGameStore } from '@/store/game-store'
 import { getOrCreatePlayerId } from '@/lib/utils/helpers'
 import { createInitialGame, processMove, tryJoinGame } from '@/lib/game-logic'
 import type { Game, GameState, Move } from '@/types/database'
-import Peer, { DataConnection } from 'peerjs'
+import type Peer from 'peerjs'
+import type { DataConnection } from 'peerjs'
 
 const validMessageTypes = new Set(['SYNC_GAME', 'JOIN_REQUEST', 'MAKE_MOVE', 'ACTION', 'ERROR'])
 
@@ -313,6 +314,7 @@ export function usePeerGame(
     if (!gameId || !playerId || peerRef.current) return
 
     const initPeer = async () => {
+      const { default: Peer } = await import('peerjs')
       const peerOptions: ConstructorParameters<typeof Peer>[1] = {}
       if (process.env.NEXT_PUBLIC_PEERJS_HOST) {
         peerOptions.host = process.env.NEXT_PUBLIC_PEERJS_HOST
@@ -384,7 +386,8 @@ export function usePeerGame(
       peerRef.current = peer
     }
 
-    const joinAsGuest = () => {
+    const joinAsGuest = async () => {
+      const { default: Peer } = await import('peerjs')
       const peerOptions: ConstructorParameters<typeof Peer>[1] = {}
       if (process.env.NEXT_PUBLIC_PEERJS_HOST) {
         peerOptions.host = process.env.NEXT_PUBLIC_PEERJS_HOST
