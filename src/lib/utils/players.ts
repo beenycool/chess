@@ -8,6 +8,7 @@ export type PlayerStats = {
 export type PlayerProfile = {
   username: string
   password: string
+  salt?: string
   stats: PlayerStats
 }
 
@@ -41,6 +42,7 @@ const normalizePlayer = (player: PlayerProfile): PlayerProfile => ({
   ...player,
   username: normalizeUsername(player.username ?? ''),
   password: player.password ?? '',
+  salt: player.salt ?? '',
   stats: {
     games: player.stats?.games ?? 0,
     wins: player.stats?.wins ?? 0,
@@ -49,15 +51,53 @@ const normalizePlayer = (player: PlayerProfile): PlayerProfile => ({
   },
 })
 
-const isHashedPassword = (value: string) => /^[a-f0-9]{64}$/i.test(value)
+const PASSWORD_ITERATIONS = 100_000
 
-const hashPassword = async (value: string) => {
+const bytesToHex = (bytes: Uint8Array) =>
+  Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+
+const hexToBytes = (hex: string) => {
+  const matches = hex.match(/.{1,2}/g)
+  if (!matches) return new Uint8Array()
+  return new Uint8Array(matches.map((byte) => parseInt(byte, 16)))
+}
+
+const hashLegacyPassword = async (value: string) => {
   if (!isBrowser() || !globalThis.crypto?.subtle) return null
   const data = new TextEncoder().encode(value)
   const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
+  return bytesToHex(new Uint8Array(hashBuffer))
+}
+
+const hashPassword = async (value: string, salt: string) => {
+  if (!isBrowser() || !globalThis.crypto?.subtle) return null
+  const baseKey = await globalThis.crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(value),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  )
+  const derivedBits = await globalThis.crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: hexToBytes(salt),
+      iterations: PASSWORD_ITERATIONS,
+      hash: 'SHA-256',
+    },
+    baseKey,
+    256
+  )
+  return bytesToHex(new Uint8Array(derivedBits))
+}
+
+const generateSalt = () => {
+  if (!isBrowser() || !globalThis.crypto?.getRandomValues) return null
+  const salt = new Uint8Array(16)
+  globalThis.crypto.getRandomValues(salt)
+  return bytesToHex(salt)
 }
 
 export const getStoredPlayers = (): PlayerProfile[] => {
@@ -117,9 +157,6 @@ export const signInPlayer = async (
   if (!normalizedUsername) return { success: false, error: 'Username is required.' }
   if (!password) return { success: false, error: 'Password is required.' }
 
-  const hashedPassword = await hashPassword(password)
-  if (!hashedPassword) return { success: false, error: 'Unable to secure password.' }
-
   const players = getStoredPlayers()
   const existingIndex = players.findIndex(
     (player) => normalizeUsername(player.username) === normalizedUsername
@@ -127,16 +164,42 @@ export const signInPlayer = async (
 
   if (existingIndex >= 0) {
     const existing = normalizePlayer(players[existingIndex])
-    const matchesHashed = existing.password === hashedPassword
-    const matchesLegacy = !isHashedPassword(existing.password) && existing.password === password
+    const hasSalt = Boolean(existing.salt)
 
-    if (!matchesHashed && !matchesLegacy) {
+    if (hasSalt) {
+      const saltedHash = await hashPassword(password, existing.salt ?? '')
+      if (!saltedHash || saltedHash !== existing.password) {
+        return { success: false, error: 'Incorrect password.' }
+      }
+      const updatedPlayer: PlayerProfile = {
+        ...existing,
+        username: normalizedUsername,
+      }
+      const updatedPlayers = [...players]
+      updatedPlayers[existingIndex] = updatedPlayer
+      savePlayers(updatedPlayers)
+      localStorage.setItem(CURRENT_PLAYER_KEY, normalizedUsername)
+      notifyPlayers()
+      return { success: true, player: updatedPlayer }
+    }
+
+    const legacyHash = await hashLegacyPassword(password)
+    if (!legacyHash) return { success: false, error: 'Unable to secure password.' }
+
+    if (existing.password !== password && existing.password !== legacyHash) {
       return { success: false, error: 'Incorrect password.' }
     }
+
+    const newSalt = generateSalt()
+    if (!newSalt) return { success: false, error: 'Unable to secure password.' }
+    const saltedHash = await hashPassword(password, newSalt)
+    if (!saltedHash) return { success: false, error: 'Unable to secure password.' }
+
     const updatedPlayer: PlayerProfile = {
       ...existing,
       username: normalizedUsername,
-      password: hashedPassword,
+      password: saltedHash,
+      salt: newSalt,
     }
     const updatedPlayers = [...players]
     updatedPlayers[existingIndex] = updatedPlayer
@@ -146,9 +209,15 @@ export const signInPlayer = async (
     return { success: true, player: updatedPlayer }
   }
 
+  const newSalt = generateSalt()
+  if (!newSalt) return { success: false, error: 'Unable to secure password.' }
+  const saltedHash = await hashPassword(password, newSalt)
+  if (!saltedHash) return { success: false, error: 'Unable to secure password.' }
+
   const newPlayer: PlayerProfile = {
     username: normalizedUsername,
-    password: hashedPassword,
+    password: saltedHash,
+    salt: newSalt,
     stats: defaultStats(),
   }
 

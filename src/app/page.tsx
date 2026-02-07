@@ -25,6 +25,9 @@ import {
 const emptyPlayersSnapshot: PlayerProfile[] = []
 const emptyPlayerSnapshot: PlayerProfile | null = null
 
+const sortPlayersByRanking = (a: PlayerProfile, b: PlayerProfile) =>
+  b.stats.wins - a.stats.wins || b.stats.draws - a.stats.draws || a.username.localeCompare(b.username)
+
 export default function HomePage() {
   const router = useRouter()
   const [timeControl, setTimeControl] = useState(DEFAULT_TIME_CONTROL.name)
@@ -55,7 +58,7 @@ export default function HomePage() {
   const leaderboard = useMemo(
     () =>
       [...players]
-        .sort((a, b) => b.stats.wins - a.stats.wins || b.stats.draws - a.stats.draws || a.username.localeCompare(b.username))
+        .sort(sortPlayersByRanking)
         .slice(0, 5),
     [players]
   )
@@ -129,7 +132,6 @@ export default function HomePage() {
             <SignInCard
               title="Chess"
               description="Sign in with a username and password to play with friends."
-              onSignedIn={() => {}}
             />
           </div>
         )}

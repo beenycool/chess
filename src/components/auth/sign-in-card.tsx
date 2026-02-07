@@ -8,7 +8,7 @@ import { signInPlayer } from '@/lib/utils/players'
 import type { PlayerProfile } from '@/lib/utils/players'
 
 interface SignInCardProps {
-  onSignedIn: (player: PlayerProfile) => void
+  onSignedIn?: (player: PlayerProfile) => void
   title?: string
   description?: string
 }
@@ -29,7 +29,7 @@ export function SignInCard({ onSignedIn, title = 'Sign In', description }: SignI
     }
     setUsername('')
     setPassword('')
-    onSignedIn(result.player)
+    onSignedIn?.(result.player)
   }
 
   return (
@@ -67,7 +67,7 @@ export function SignInCard({ onSignedIn, title = 'Sign In', description }: SignI
           Sign In / Create Player
         </Button>
         <p className="text-xs text-muted-foreground text-center">
-          No email or security—just between friends.
+          Stored only in this browser—no email or security, just between friends.
         </p>
       </CardContent>
     </Card>

@@ -132,7 +132,6 @@ export default function GamePage() {
         <SignInCard
           title="Join Game"
           description="Sign in with a username and password to join this match."
-          onSignedIn={() => {}}
         />
       </main>
     )
