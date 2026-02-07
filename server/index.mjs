@@ -8,10 +8,14 @@ import { fileURLToPath } from 'node:url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const PORT = Number(process.env.PORT || 4000)
+const parsedPort = Number.parseInt(process.env.PORT || '', 10)
+const PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort < 65536 ? parsedPort : 4000
 const DATA_PATH = process.env.DATA_PATH || path.join(__dirname, 'data', 'players.json')
 const PASSWORD_ITERATIONS = 600_000
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/
+const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || '*'
+const parsedBodyLimit = Number.parseInt(process.env.MAX_BODY_BYTES || '', 10)
+const MAX_BODY_BYTES = Number.isInteger(parsedBodyLimit) && parsedBodyLimit > 0 ? parsedBodyLimit : 1024 * 1024
 
 const ensureDataDir = () => {
   const dir = path.dirname(DATA_PATH)
@@ -52,7 +56,7 @@ const createSalt = () => crypto.randomBytes(16).toString('hex')
 const jsonResponse = (res, statusCode, payload) => {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   })
@@ -64,6 +68,10 @@ const readBody = (req) =>
     let body = ''
     req.on('data', (chunk) => {
       body += chunk
+      if (body.length > MAX_BODY_BYTES) {
+        reject(new Error('BODY_TOO_LARGE'))
+        req.destroy()
+      }
     })
     req.on('end', () => {
       if (!body) return resolve({})
@@ -141,7 +149,11 @@ const server = http.createServer(async (req, res) => {
       data.players[username] = player
       saveData(data)
       jsonResponse(res, 200, { player: buildPlayerResponse(player) })
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === 'BODY_TOO_LARGE') {
+        jsonResponse(res, 413, { error: 'Payload too large.' })
+        return
+      }
       jsonResponse(res, 400, { error: 'Invalid JSON payload.' })
     }
     return
@@ -176,7 +188,11 @@ const server = http.createServer(async (req, res) => {
 
       saveData(data)
       jsonResponse(res, 200, { player: buildPlayerResponse(player) })
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === 'BODY_TOO_LARGE') {
+        jsonResponse(res, 413, { error: 'Payload too large.' })
+        return
+      }
       jsonResponse(res, 400, { error: 'Invalid JSON payload.' })
     }
     return

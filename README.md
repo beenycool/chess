@@ -31,6 +31,8 @@ node server/index.mjs
 Environment variables:
 - `PORT` (default `4000`)
 - `DATA_PATH` (default `server/data/players.json`, set this to a Render disk like `/data/players.json`)
+- `CORS_ORIGIN` (default `*`)
+- `MAX_BODY_BYTES` (default `1048576`)
 
 Once deployed, point the frontend to your backend by setting `NEXT_PUBLIC_BACKEND_URL` to the Render service URL.
 

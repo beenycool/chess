@@ -44,7 +44,21 @@ const normalizeUsername = (username: string) => username.trim().toLowerCase()
 const filterUsernameCharacters = (username: string) => username.replace(/[^a-z0-9_-]/g, '')
 const getUsernameKey = (username: string) => filterUsernameCharacters(normalizeUsername(username))
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL?.trim()
+const resolveBackendUrl = () => {
+  const rawUrl = process.env.NEXT_PUBLIC_BACKEND_URL?.trim()
+  if (!rawUrl) return null
+  try {
+    const url = new URL(rawUrl)
+    if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
+      return null
+    }
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
+
+const BACKEND_URL = resolveBackendUrl()
 
 const notifyPlayers = () => {
   if (!isBrowser()) return
@@ -236,13 +250,18 @@ const fetchBackend = async <T>(path: string, options?: RequestInit): Promise<T |
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })
-    if (!response.ok) return null
+    if (!response.ok) {
+      console.warn('Backend request failed', response.status, response.statusText)
+      return null
+    }
     try {
       return (await response.json()) as T
     } catch {
+      console.warn('Backend response was not valid JSON')
       return null
     }
   } catch {
+    console.warn('Backend request error')
     return null
   }
 }
