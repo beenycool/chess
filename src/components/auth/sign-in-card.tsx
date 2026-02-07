@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -17,14 +17,16 @@ export function SignInCard({ onSignedIn, title = 'Sign In', description }: SignI
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const usernameId = useId()
+  const passwordId = useId()
 
-  const handleSignIn = () => {
-    const result = signInPlayer(username, password)
+  const handleSignIn = async () => {
+    setError(null)
+    const result = await signInPlayer(username, password)
     if (!result.success || !result.player) {
       setError(result.error || 'Unable to sign in.')
       return
     }
-    setError(null)
     setUsername('')
     setPassword('')
     onSignedIn(result.player)
@@ -38,16 +40,22 @@ export function SignInCard({ onSignedIn, title = 'Sign In', description }: SignI
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Username</label>
+          <label className="text-sm font-medium" htmlFor={usernameId}>
+            Username
+          </label>
           <Input
+            id={usernameId}
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             placeholder="e.g. queenfan"
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Password</label>
+          <label className="text-sm font-medium" htmlFor={passwordId}>
+            Password
+          </label>
           <Input
+            id={passwordId}
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}

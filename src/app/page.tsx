@@ -60,8 +60,6 @@ export default function HomePage() {
     [players]
   )
 
-  const handleSignedIn = () => {}
-
   const handleSignOut = () => {
     signOutPlayer()
   }
@@ -131,7 +129,7 @@ export default function HomePage() {
             <SignInCard
               title="Chess"
               description="Sign in with a username and password to play with friends."
-              onSignedIn={handleSignedIn}
+              onSignedIn={() => {}}
             />
           </div>
         )}
@@ -191,7 +189,7 @@ export default function HomePage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Sign in with a friend username to start tracking your games.
+                  Sign in with your username to start tracking your games.
                 </p>
               )}
             </CardContent>
