@@ -77,7 +77,7 @@ export default function HomePage() {
   }
 
   const currentStats = currentPlayer?.stats
-  const winRate = currentStats?.games ? Math.round((currentStats.wins / currentStats.games) * 100) : 0
+  const winRate = currentPlayer ? Math.round(getWinRate(currentPlayer) * 100) : 0
 
   return (
     <main className="min-h-screen p-4">

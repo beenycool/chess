@@ -37,6 +37,7 @@ const isBrowser = () => typeof window !== 'undefined'
 const normalizeUsername = (username: string) => username.trim().toLowerCase()
 const sanitizeUsername = (username: string) => username.replace(/[^a-z0-9_-]/g, '')
 const getUsernameKey = (username: string) => sanitizeUsername(normalizeUsername(username))
+const USERNAME_PATTERN = /^[a-z0-9_-]+$/
 
 const notifyPlayers = () => {
   if (!isBrowser()) return
@@ -171,16 +172,16 @@ export const signInPlayer = async (
   password: string
 ): Promise<{ success: boolean; error?: string; player?: PlayerProfile }> => {
   const normalizedUsername = normalizeUsername(username)
-  const sanitizedUsername = sanitizeUsername(normalizedUsername)
-  if (!sanitizedUsername) return { success: false, error: 'Username is required.' }
-  if (sanitizedUsername !== normalizedUsername) {
+  if (!normalizedUsername) return { success: false, error: 'Username is required.' }
+  if (!USERNAME_PATTERN.test(normalizedUsername)) {
     return { success: false, error: 'Use only letters, numbers, dashes, and underscores.' }
   }
+  const usernameKey = normalizedUsername
   if (!password) return { success: false, error: 'Password is required.' }
 
   const players = getStoredPlayerData()
   const existingIndex = players.findIndex(
-    (player) => getUsernameKey(player.username) === sanitizedUsername
+    (player) => getUsernameKey(player.username) === usernameKey
   )
 
   if (existingIndex >= 0) {
@@ -194,12 +195,12 @@ export const signInPlayer = async (
       }
       const updatedPlayer: StoredPlayer = {
         ...existing,
-        username: sanitizedUsername,
+        username: usernameKey,
       }
       const updatedPlayers = [...players]
       updatedPlayers[existingIndex] = updatedPlayer
       savePlayers(updatedPlayers)
-      localStorage.setItem(CURRENT_PLAYER_KEY, sanitizedUsername)
+      localStorage.setItem(CURRENT_PLAYER_KEY, usernameKey)
       notifyPlayers()
       return { success: true, player: toPublicProfile(updatedPlayer) }
     }
@@ -221,14 +222,14 @@ export const signInPlayer = async (
 
     const updatedPlayer: StoredPlayer = {
       ...existing,
-      username: sanitizedUsername,
+      username: usernameKey,
       password: saltedHash,
       salt: newSalt,
     }
     const updatedPlayers = [...players]
     updatedPlayers[existingIndex] = updatedPlayer
     savePlayers(updatedPlayers)
-    localStorage.setItem(CURRENT_PLAYER_KEY, sanitizedUsername)
+    localStorage.setItem(CURRENT_PLAYER_KEY, usernameKey)
     notifyPlayers()
     return { success: true, player: toPublicProfile(updatedPlayer) }
   }
@@ -239,7 +240,7 @@ export const signInPlayer = async (
   if (!saltedHash) return { success: false, error: 'Unable to secure password.' }
 
   const newPlayer: StoredPlayer = {
-    username: sanitizedUsername,
+    username: usernameKey,
     password: saltedHash,
     salt: newSalt,
     stats: defaultStats(),
@@ -273,9 +274,13 @@ export const updatePlayerStats = (
   const updatedPlayer = normalizeStoredPlayer(players[index])
   updatedPlayer.stats.games += 1
 
-  if (result === 'win') updatedPlayer.stats.wins += 1
-  if (result === 'loss') updatedPlayer.stats.losses += 1
-  if (result === 'draw') updatedPlayer.stats.draws += 1
+  if (result === 'win') {
+    updatedPlayer.stats.wins += 1
+  } else if (result === 'loss') {
+    updatedPlayer.stats.losses += 1
+  } else if (result === 'draw') {
+    updatedPlayer.stats.draws += 1
+  }
 
   const updatedPlayers = [...players]
   updatedPlayers[index] = updatedPlayer

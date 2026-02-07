@@ -64,6 +64,10 @@ export default function GamePage() {
     handleTimeout,
   } = usePeerGame(gameId, peerOptions)
 
+  useEffect(() => {
+    statsRecordedRef.current = false
+  }, [gameId])
+
   // Show game over dialog when game ends
   useEffect(() => {
     if (game?.status === 'completed') {
