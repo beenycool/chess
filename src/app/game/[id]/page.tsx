@@ -20,6 +20,11 @@ import { getCurrentPlayer, subscribePlayers, updatePlayerStats, type PlayerProfi
 import { toast } from 'sonner'
 
 const emptyPlayerSnapshot: PlayerProfile | null = null
+const determinePlayerResult = (result: string, playerColor: 'white' | 'black' | null): 'win' | 'loss' | 'draw' => {
+  if (result === 'draw') return 'draw'
+  if (result === playerColor) return 'win'
+  return 'loss'
+}
 
 export default function GamePage() {
   const params = useParams()
@@ -80,14 +85,7 @@ export default function GamePage() {
     if (!game.result) return
     if (!playerColor || !currentPlayer) return
 
-    let result: 'win' | 'loss' | 'draw'
-    if (game.result === 'draw') {
-      result = 'draw'
-    } else if (game.result === playerColor) {
-      result = 'win'
-    } else {
-      result = 'loss'
-    }
+    const result = determinePlayerResult(game.result, playerColor)
 
     updatePlayerStats(currentPlayer.username, result)
     statsRecordedRef.current = true

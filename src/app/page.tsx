@@ -17,6 +17,7 @@ import { getOrCreatePlayerId, generateGameId } from '@/lib/utils/helpers'
 import {
   getCurrentPlayer,
   getStoredPlayers,
+  getWinRate,
   signOutPlayer,
   subscribePlayers,
   type PlayerProfile,
@@ -25,10 +26,8 @@ import {
 const emptyPlayersSnapshot: PlayerProfile[] = []
 const emptyPlayerSnapshot: PlayerProfile | null = null
 
-const getWinRate = (player: PlayerProfile) => (player.stats.games ? player.stats.wins / player.stats.games : 0)
-
 const sortPlayersByRanking = (a: PlayerProfile, b: PlayerProfile) => {
-  const winRateDiff = getWinRate(b) - getWinRate(a)
+  const winRateDiff = getWinRate(b.stats) - getWinRate(a.stats)
   if (winRateDiff !== 0) return winRateDiff
   const winDiff = b.stats.wins - a.stats.wins
   if (winDiff !== 0) return winDiff
@@ -77,7 +76,7 @@ export default function HomePage() {
   }
 
   const currentStats = currentPlayer?.stats
-  const winRate = currentPlayer ? Math.round(getWinRate(currentPlayer) * 100) : 0
+  const winRate = currentPlayer ? Math.round(getWinRate(currentPlayer.stats) * 100) : 0
 
   return (
     <main className="min-h-screen p-4">

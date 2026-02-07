@@ -32,11 +32,13 @@ const defaultStats = (): PlayerStats => ({
   draws: 0,
 })
 
+export const getWinRate = (stats: PlayerStats) => (stats.games ? stats.wins / stats.games : 0)
+
 const isBrowser = () => typeof window !== 'undefined'
 
 const normalizeUsername = (username: string) => username.trim().toLowerCase()
-const sanitizeUsername = (username: string) => username.replace(/[^a-z0-9_-]/g, '')
-const getUsernameKey = (username: string) => sanitizeUsername(normalizeUsername(username))
+const filterUsernameCharacters = (username: string) => username.replace(/[^a-z0-9_-]/g, '')
+const getUsernameKey = (username: string) => filterUsernameCharacters(normalizeUsername(username))
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/
 
 const notifyPlayers = () => {
@@ -62,7 +64,7 @@ const toPublicProfile = (player: StoredPlayer): PlayerProfile => ({
   stats: player.stats,
 })
 
-const PASSWORD_ITERATIONS = 1_000_000
+const PASSWORD_ITERATIONS = 600_000
 
 const bytesToHex = (bytes: Uint8Array) => Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')
 
