@@ -7,18 +7,23 @@ export type PlayerStats = {
 
 export type PlayerProfile = {
   username: string
+  stats: PlayerStats
+}
+
+type StoredPlayer = PlayerProfile & {
   password: string
   salt?: string
-  stats: PlayerStats
 }
 
 const PLAYERS_KEY = 'chess_players'
 const CURRENT_PLAYER_KEY = 'chess_current_player'
 const PLAYER_EVENT = 'chess-player-update'
-const EMPTY_PLAYERS: PlayerProfile[] = []
+const EMPTY_PLAYERS: StoredPlayer[] = []
+const EMPTY_PUBLIC_PROFILES: PlayerProfile[] = []
 
 let cachedPlayersRaw: string | null = null
-let cachedPlayers: PlayerProfile[] = EMPTY_PLAYERS
+let cachedPlayers: StoredPlayer[] = EMPTY_PLAYERS
+let cachedPublicPlayers: PlayerProfile[] = EMPTY_PUBLIC_PROFILES
 
 const defaultStats = (): PlayerStats => ({
   games: 0,
@@ -36,7 +41,7 @@ const notifyPlayers = () => {
   window.dispatchEvent(new Event(PLAYER_EVENT))
 }
 
-const normalizePlayer = (player: PlayerProfile): PlayerProfile => ({
+const normalizeStoredPlayer = (player: StoredPlayer): StoredPlayer => ({
   ...player,
   username: normalizeUsername(player.username ?? ''),
   password: player.password ?? '',
@@ -49,7 +54,12 @@ const normalizePlayer = (player: PlayerProfile): PlayerProfile => ({
   },
 })
 
-const PASSWORD_ITERATIONS = 100_000
+const toPublicProfile = (player: StoredPlayer): PlayerProfile => ({
+  username: player.username,
+  stats: player.stats,
+})
+
+const PASSWORD_ITERATIONS = 600_000
 
 const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes)
@@ -61,6 +71,8 @@ const hexToBytes = (hex: string) => {
   if (!matches) return new Uint8Array()
   return new Uint8Array(matches.map((byte) => parseInt(byte, 16)))
 }
+
+const isHexHash = (value: string) => /^[a-f0-9]{64}$/i.test(value)
 
 const hashLegacyPassword = async (value: string) => {
   if (!isBrowser() || !globalThis.crypto?.subtle) return null
@@ -99,7 +111,7 @@ const generateSalt = () => {
   return bytesToHex(salt)
 }
 
-export const getStoredPlayers = (): PlayerProfile[] => {
+const getStoredPlayerData = (): StoredPlayer[] => {
   if (!isBrowser()) return EMPTY_PLAYERS
   const raw = localStorage.getItem(PLAYERS_KEY) ?? '[]'
   if (raw === cachedPlayersRaw) return cachedPlayers
@@ -108,17 +120,26 @@ export const getStoredPlayers = (): PlayerProfile[] => {
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) {
       cachedPlayers = EMPTY_PLAYERS
+      cachedPublicPlayers = EMPTY_PUBLIC_PROFILES
       return cachedPlayers
     }
-    cachedPlayers = parsed.map((player) => normalizePlayer(player as PlayerProfile))
+    cachedPlayers = parsed.map((player) => normalizeStoredPlayer(player as StoredPlayer))
+    cachedPublicPlayers = cachedPlayers.map(toPublicProfile)
     return cachedPlayers
   } catch {
     cachedPlayers = EMPTY_PLAYERS
+    cachedPublicPlayers = EMPTY_PUBLIC_PROFILES
     return cachedPlayers
   }
 }
 
-const savePlayers = (players: PlayerProfile[]) => {
+export const getStoredPlayers = (): PlayerProfile[] => {
+  if (!isBrowser()) return EMPTY_PUBLIC_PROFILES
+  getStoredPlayerData()
+  return cachedPublicPlayers
+}
+
+const savePlayers = (players: StoredPlayer[]) => {
   if (!isBrowser()) return
   localStorage.setItem(PLAYERS_KEY, JSON.stringify(players))
 }
@@ -138,9 +159,9 @@ export const getCurrentPlayer = (): PlayerProfile | null => {
   if (!isBrowser()) return null
   const username = localStorage.getItem(CURRENT_PLAYER_KEY)
   if (!username) return null
-  const players = getStoredPlayers()
+  getStoredPlayerData()
   const normalizedUsername = normalizeUsername(username)
-  return players.find((player) => normalizeUsername(player.username) === normalizedUsername) ?? null
+  return cachedPublicPlayers.find((player) => normalizeUsername(player.username) === normalizedUsername) ?? null
 }
 
 export const signInPlayer = async (
@@ -151,13 +172,13 @@ export const signInPlayer = async (
   if (!normalizedUsername) return { success: false, error: 'Username is required.' }
   if (!password) return { success: false, error: 'Password is required.' }
 
-  const players = getStoredPlayers()
+  const players = getStoredPlayerData()
   const existingIndex = players.findIndex(
     (player) => normalizeUsername(player.username) === normalizedUsername
   )
 
   if (existingIndex >= 0) {
-    const existing = normalizePlayer(players[existingIndex])
+    const existing = normalizeStoredPlayer(players[existingIndex])
     const hasSalt = Boolean(existing.salt)
 
     if (hasSalt) {
@@ -165,7 +186,7 @@ export const signInPlayer = async (
       if (!saltedHash || saltedHash !== existing.password) {
         return { success: false, error: 'Incorrect password.' }
       }
-      const updatedPlayer: PlayerProfile = {
+      const updatedPlayer: StoredPlayer = {
         ...existing,
         username: normalizedUsername,
       }
@@ -174,13 +195,16 @@ export const signInPlayer = async (
       savePlayers(updatedPlayers)
       localStorage.setItem(CURRENT_PLAYER_KEY, normalizedUsername)
       notifyPlayers()
-      return { success: true, player: updatedPlayer }
+      return { success: true, player: toPublicProfile(updatedPlayer) }
     }
 
     const legacyHash = await hashLegacyPassword(password)
     if (!legacyHash) return { success: false, error: 'Unable to secure password.' }
 
-    if (existing.password !== password && existing.password !== legacyHash) {
+    const storedLegacyHash = isHexHash(existing.password)
+      ? existing.password
+      : await hashLegacyPassword(existing.password)
+    if (!storedLegacyHash || storedLegacyHash !== legacyHash) {
       return { success: false, error: 'Incorrect password.' }
     }
 
@@ -189,7 +213,7 @@ export const signInPlayer = async (
     const saltedHash = await hashPassword(password, newSalt)
     if (!saltedHash) return { success: false, error: 'Unable to secure password.' }
 
-    const updatedPlayer: PlayerProfile = {
+    const updatedPlayer: StoredPlayer = {
       ...existing,
       username: normalizedUsername,
       password: saltedHash,
@@ -200,7 +224,7 @@ export const signInPlayer = async (
     savePlayers(updatedPlayers)
     localStorage.setItem(CURRENT_PLAYER_KEY, normalizedUsername)
     notifyPlayers()
-    return { success: true, player: updatedPlayer }
+    return { success: true, player: toPublicProfile(updatedPlayer) }
   }
 
   const newSalt = generateSalt()
@@ -208,7 +232,7 @@ export const signInPlayer = async (
   const saltedHash = await hashPassword(password, newSalt)
   if (!saltedHash) return { success: false, error: 'Unable to secure password.' }
 
-  const newPlayer: PlayerProfile = {
+  const newPlayer: StoredPlayer = {
     username: normalizedUsername,
     password: saltedHash,
     salt: newSalt,
@@ -219,7 +243,7 @@ export const signInPlayer = async (
   savePlayers(updatedPlayers)
   localStorage.setItem(CURRENT_PLAYER_KEY, newPlayer.username)
   notifyPlayers()
-  return { success: true, player: newPlayer }
+  return { success: true, player: toPublicProfile(newPlayer) }
 }
 
 export const signOutPlayer = () => {
@@ -234,13 +258,13 @@ export const updatePlayerStats = (
 ): PlayerProfile | null => {
   if (!isBrowser()) return null
   const normalizedUsername = normalizeUsername(username)
-  const players = getStoredPlayers()
+  const players = getStoredPlayerData()
   const index = players.findIndex(
     (player) => normalizeUsername(player.username) === normalizedUsername
   )
   if (index < 0) return null
 
-  const updatedPlayer = normalizePlayer(players[index])
+  const updatedPlayer = normalizeStoredPlayer(players[index])
   updatedPlayer.stats.games += 1
 
   if (result === 'win') updatedPlayer.stats.wins += 1
@@ -251,5 +275,5 @@ export const updatePlayerStats = (
   updatedPlayers[index] = updatedPlayer
   savePlayers(updatedPlayers)
   notifyPlayers()
-  return updatedPlayer
+  return toPublicProfile(updatedPlayer)
 }

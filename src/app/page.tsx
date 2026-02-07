@@ -25,8 +25,17 @@ import {
 const emptyPlayersSnapshot: PlayerProfile[] = []
 const emptyPlayerSnapshot: PlayerProfile | null = null
 
-const sortPlayersByRanking = (a: PlayerProfile, b: PlayerProfile) =>
-  b.stats.wins - a.stats.wins || b.stats.draws - a.stats.draws || a.username.localeCompare(b.username)
+const getWinRate = (player: PlayerProfile) => (player.stats.games ? player.stats.wins / player.stats.games : 0)
+
+const sortPlayersByRanking = (a: PlayerProfile, b: PlayerProfile) => {
+  const winRateDiff = getWinRate(b) - getWinRate(a)
+  if (winRateDiff !== 0) return winRateDiff
+  const winDiff = b.stats.wins - a.stats.wins
+  if (winDiff !== 0) return winDiff
+  const gamesDiff = b.stats.games - a.stats.games
+  if (gamesDiff !== 0) return gamesDiff
+  return a.username.localeCompare(b.username)
+}
 
 export default function HomePage() {
   const router = useRouter()

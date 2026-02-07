@@ -59,7 +59,7 @@ export function SignInCard({ onSignedIn, title = 'Sign In', description }: SignI
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="Shared secret"
+            placeholder="Enter your password"
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
