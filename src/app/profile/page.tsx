@@ -1,6 +1,6 @@
-import { Game } from "@/types/database"
 'use client'
 
+import { Game } from "@/types/database"
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase'
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { History, TrendingUp, User as UserIcon } from 'lucide-react'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 export default function ProfilePage() {
   const { user, profile, loading: authLoading } = useAuth()
@@ -29,7 +30,7 @@ export default function ProfilePage() {
       .limit(20)
 
     if (!error && data) {
-      setGames(data)
+      setGames(data as any)
     }
     setLoading(false)
   }, [user])
@@ -129,7 +130,7 @@ export default function ProfilePage() {
                     const isWhite = game.white_id === user.id
                     const myResult = game.result === 'draw' ? 'draw' :
                       (isWhite && game.result === 'white') || (!isWhite && game.result === 'black') ? 'win' : 'loss'
-                    const opponent = isWhite ? game.black : game.white
+                    const opponent = isWhite ? (game as any).black : (game as any).white
 
                     return (
                       <div key={game.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors">
@@ -166,5 +167,3 @@ export default function ProfilePage() {
     </div>
   )
 }
-
-import { Button } from '@/components/ui/button'

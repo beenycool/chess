@@ -1,6 +1,6 @@
-import { Game } from "@/types/database"
 'use client'
 
+import { Game } from "@/types/database"
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -40,7 +40,7 @@ export default function Home() {
       .limit(10)
 
     if (!error && data) {
-      setActiveGames(data)
+      setActiveGames(data as any)
     }
     setLoading(false)
   }, [])
@@ -52,8 +52,7 @@ export default function Home() {
     const channel = supabase
       .channel('public:games')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchActiveGames()
+        fetchActiveGames()
       })
       .subscribe()
 
@@ -110,7 +109,7 @@ export default function Home() {
                   <SelectContent>
                     {TIME_CONTROLS.map((tc) => (
                       <SelectItem key={tc.name} value={tc.name}>
-                        {tc.name} ({tc.description})
+                        {tc.name} ({tc.label})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -179,14 +178,14 @@ export default function Home() {
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="font-bold">
-                          {game.white?.username || game.black?.username || 'Guest'}&apos;s Game
+                          {(game as any).white?.username || (game as any).black?.username || 'Guest'}&apos;s Game
                         </span>
                         <Badge variant="secondary" className="text-[10px] px-1 h-4">
                           {game.time_control}
                         </Badge>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        Hosted by {game.white?.username || game.black?.username || 'Anonymous'}
+                        Hosted by {(game as any).white?.username || (game as any).black?.username || 'Anonymous'}
                       </span>
                     </div>
                     <Button
