@@ -76,6 +76,7 @@ export default function GamePage() {
   // Show game over dialog when game ends
   useEffect(() => {
     if (game?.status === 'completed') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowGameOver(true)
     }
   }, [game?.status])

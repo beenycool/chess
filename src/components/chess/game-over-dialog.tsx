@@ -81,6 +81,9 @@ export function GameOverDialog({ open, onRematch }: GameOverDialogProps) {
           <Button onClick={() => router.push('/')} variant="default">
             New Game
           </Button>
+          <Button onClick={() => router.push('/profile')} variant="outline">
+            View My Profile & History
+          </Button>
           {onRematch && (
             <Button onClick={onRematch} variant="secondary">
               Rematch
