@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { SignInCard } from '@/components/auth/sign-in-card'
 import { 
   ChessBoard, 
   ChessClock, 
@@ -15,7 +16,10 @@ import {
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
 import { copyToClipboard } from '@/lib/utils/helpers'
+import { getCurrentPlayer, subscribePlayers, updatePlayerStats, type PlayerProfile } from '@/lib/utils/players'
 import { toast } from 'sonner'
+
+const emptyPlayerSnapshot: PlayerProfile | null = null
 
 export default function GamePage() {
   const params = useParams()
@@ -36,6 +40,8 @@ export default function GamePage() {
   const color = storedOptions?.color || undefined
 
   const [showGameOver, setShowGameOver] = useState(false)
+  const currentPlayer = useSyncExternalStore(subscribePlayers, getCurrentPlayer, () => emptyPlayerSnapshot)
+  const statsRecordedRef = useRef(false)
   
   const {
     game,
@@ -64,6 +70,21 @@ export default function GamePage() {
       setShowGameOver(true)
     }
   }, [game?.status])
+
+  useEffect(() => {
+    if (!game || game.status !== 'completed' || statsRecordedRef.current) return
+    if (!game.result) return
+    if (!playerColor || !currentPlayer) return
+
+    const result = game.result === 'draw'
+      ? 'draw'
+      : game.result === playerColor
+        ? 'win'
+        : 'loss'
+
+    updatePlayerStats(currentPlayer.username, result)
+    statsRecordedRef.current = true
+  }, [currentPlayer, game, playerColor])
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
@@ -105,6 +126,18 @@ export default function GamePage() {
     }
   }, [playerColor, handleTimeout])
 
+  if (!currentPlayer) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <SignInCard
+          title="Join Game"
+          description="Sign in with a username and password to join this match."
+          onSignedIn={() => {}}
+        />
+      </main>
+    )
+  }
+
   if (!game || !gameState) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
@@ -136,6 +169,7 @@ export default function GamePage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Player: {currentPlayer.username}</span>
             <span className="text-sm text-muted-foreground">{game.time_control}</span>
             <Button variant="outline" size="sm" onClick={handleCopyInviteLink}>
               Copy Invite Link
