@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(data)
     } catch (error: unknown) {
       console.error('Error fetching profile:', error)
-      setProfileFetchError(error)
+      setProfileFetchError(error instanceof Error ? error : new Error(String(error)))
     } finally {
       setLoading(false)
     }

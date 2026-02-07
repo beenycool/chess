@@ -28,15 +28,7 @@ export default function GamePage() {
     if (urlTC) {
         return { timeControl: urlTC, color: (urlColor as 'white' | 'black' | 'random') || 'random' }
     }
-
-    if (typeof window === 'undefined') return null
-    const rawOptions = sessionStorage.getItem(`game-options:${gameId}`)
-    if (!rawOptions) return null
-    try {
-      return JSON.parse(rawOptions) as { timeControl?: string, color?: 'white' | 'black' | 'random' }
-    } catch {
-      return null
-    }
+    return null
   }, [gameId, searchParams])
 
   const timeControl = storedOptions?.timeControl || undefined

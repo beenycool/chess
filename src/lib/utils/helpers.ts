@@ -1,18 +1,13 @@
 import { nanoid } from 'nanoid'
 
-const PLAYER_ID_KEY = 'chess_player_id'
-
-export function getOrCreatePlayerId(): string {
-  if (typeof window === 'undefined') {
-    return nanoid(12)
+export function getOrCreatePlayerId(userId?: string): string {
+  // If user is logged in, use their Supabase user ID
+  if (userId) {
+    return userId
   }
   
-  let playerId = localStorage.getItem(PLAYER_ID_KEY)
-  if (!playerId) {
-    playerId = nanoid(12)
-    localStorage.setItem(PLAYER_ID_KEY, playerId)
-  }
-  return playerId
+  // For guests, generate a random ID (in-memory only, not stored)
+  return nanoid(12)
 }
 
 export function formatTime(ms: number): string {

@@ -1,7 +1,7 @@
 'use client'
 
 import { Game } from "@/types/database"
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { nanoid } from 'nanoid'
@@ -26,7 +26,7 @@ type GameWithPlayers = Game & {
   black: { username: string; elo: number } | null
 }
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, profile } = useAuth()
@@ -69,13 +69,9 @@ export default function Home() {
   }, [supabase])
 
   useEffect(() => {
-<<<<<<< HEAD
-    fetchActiveGames()
-=======
     // eslint-disable-next-line react-hooks/exhaustive-deps
     fetchActiveGames()
     // Set up real-time subscription for active games, filtered by status=waiting
->>>>>>> bcba45a (Merge PR #8: Refactor chess app for stability and type safety)
     const channel = supabase
       .channel('public:games')
       .on('postgres_changes', {
@@ -96,28 +92,10 @@ export default function Home() {
 
   const handleCreateGame = () => {
     const gameId = nanoid(10)
-<<<<<<< HEAD
-    sessionStorage.setItem(`game-options:${gameId}`, JSON.stringify({
-      timeControl,
-      color
-    }))
-    router.push(`/game/${gameId}`)
-=======
-    // Encode options in URL
     const params = new URLSearchParams()
     params.set('timeControl', timeControl)
     params.set('color', color)
-
-    // Also save to session storage as fallback
-    if (typeof window !== 'undefined') {
-        sessionStorage.setItem(`game-options:${gameId}`, JSON.stringify({
-            timeControl,
-            color
-        }))
-    }
-
     router.push(`/game/${gameId}?${params.toString()}`)
->>>>>>> bcba45a (Merge PR #8: Refactor chess app for stability and type safety)
   }
 
   const handleJoinGame = (gameId: string) => {
@@ -295,5 +273,13 @@ export default function Home() {
         </Card>
       )}
     </main>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   )
 }

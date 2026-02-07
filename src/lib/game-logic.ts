@@ -40,8 +40,6 @@ export function createInitialGame(gameId: string, options: GameOptions): { game:
     black_id: null,
     white_player_id: whitePlayerId,
     black_player_id: blackPlayerId,
-    white_id: null,
-    black_id: null,
     result: null,
     result_reason: null,
     created_at: now,
