@@ -18,6 +18,7 @@ type StoredPlayer = PlayerProfile & {
 const PLAYERS_KEY = 'chess_players'
 const REMOTE_PLAYERS_KEY = 'chess_remote_players'
 const CURRENT_PLAYER_KEY = 'chess_current_player'
+const CURRENT_PLAYER_PROFILE_KEY = 'chess_current_player_profile'
 const PLAYER_EVENT = 'chess-player-update'
 const EMPTY_PLAYERS: StoredPlayer[] = []
 const EMPTY_PUBLIC_PROFILES: PlayerProfile[] = []
@@ -208,6 +209,26 @@ const mergeRemotePlayers = (players: PlayerProfile[]) => {
   return merged
 }
 
+const setCurrentProfile = (player: PlayerProfile | null) => {
+  if (!isBrowser()) return
+  if (!player) {
+    localStorage.removeItem(CURRENT_PLAYER_PROFILE_KEY)
+    return
+  }
+  localStorage.setItem(CURRENT_PLAYER_PROFILE_KEY, JSON.stringify(normalizePublicProfile(player)))
+}
+
+const getCurrentProfile = (): PlayerProfile | null => {
+  if (!isBrowser()) return null
+  const raw = localStorage.getItem(CURRENT_PLAYER_PROFILE_KEY)
+  if (!raw) return null
+  try {
+    return normalizePublicProfile(JSON.parse(raw) as PlayerProfile)
+  } catch {
+    return null
+  }
+}
+
 const fetchBackend = async <T,>(path: string, options?: RequestInit): Promise<T | null> => {
   if (!BACKEND_URL) return null
   try {
@@ -215,9 +236,12 @@ const fetchBackend = async <T,>(path: string, options?: RequestInit): Promise<T 
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })
-    const data = (await response.json()) as T
     if (!response.ok) return null
-    return data
+    try {
+      return (await response.json()) as T
+    } catch {
+      return null
+    }
   } catch {
     return null
   }
@@ -236,6 +260,10 @@ export const subscribePlayers = (callback: () => void) => {
 
 export const getCurrentPlayer = (): PlayerProfile | null => {
   if (!isBrowser()) return null
+  if (BACKEND_URL) {
+    const profile = getCurrentProfile()
+    if (profile) return profile
+  }
   const username = localStorage.getItem(CURRENT_PLAYER_KEY)
   if (!username) return null
   getStoredPlayerData()
@@ -247,6 +275,12 @@ export const syncPlayersFromBackend = async () => {
   const data = await fetchBackend<{ players?: PlayerProfile[] }>('/players')
   if (!data?.players) return
   mergeRemotePlayers(data.players)
+  const currentUsername = localStorage.getItem(CURRENT_PLAYER_KEY)
+  if (currentUsername) {
+    const usernameKey = getUsernameKey(currentUsername)
+    const match = data.players.find((player) => getUsernameKey(player.username) === usernameKey)
+    if (match) setCurrentProfile(match)
+  }
   notifyPlayers()
 }
 
@@ -270,24 +304,9 @@ export const signInPlayer = async (
       return { success: false, error: data?.error || 'Unable to sign in.' }
     }
     const remotePlayer = normalizePublicProfile(data.player)
-    const players = getStoredPlayerData()
-    const existingIndex = players.findIndex(
-      (player) => getUsernameKey(player.username) === remotePlayer.username
-    )
-    const updatedPlayer: StoredPlayer = {
-      username: remotePlayer.username,
-      password: '',
-      salt: '',
-      stats: remotePlayer.stats,
-    }
-    if (existingIndex >= 0) {
-      players[existingIndex] = { ...players[existingIndex], ...updatedPlayer }
-    } else {
-      players.push(updatedPlayer)
-    }
-    savePlayers(players)
     mergeRemotePlayers([remotePlayer])
     localStorage.setItem(CURRENT_PLAYER_KEY, remotePlayer.username)
+    setCurrentProfile(remotePlayer)
     notifyPlayers()
     return { success: true, player: remotePlayer }
   }
@@ -369,6 +388,7 @@ export const signInPlayer = async (
 export const signOutPlayer = () => {
   if (!isBrowser()) return
   localStorage.removeItem(CURRENT_PLAYER_KEY)
+  setCurrentProfile(null)
   notifyPlayers()
 }
 
@@ -406,7 +426,6 @@ export const updatePlayerStats = (
     }).then((data) => {
       if (data?.player) {
         mergeRemotePlayers([data.player])
-        notifyPlayers()
       }
     })
   }

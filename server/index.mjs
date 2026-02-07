@@ -147,11 +147,12 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (req.method === 'POST' && pathname && pathname.startsWith('/players/') && pathname.endsWith('/result')) {
+  const resultMatch = pathname?.match(/^\/players\/([^/]+)\/result$/)
+  if (req.method === 'POST' && resultMatch) {
     try {
       const body = await readBody(req)
       const result = String(body.result || '')
-      const username = normalizeUsername(pathname.replace('/players/', '').replace('/result', ''))
+      const username = normalizeUsername(resultMatch[1] || '')
       if (!username || !USERNAME_PATTERN.test(username)) {
         jsonResponse(res, 400, { error: 'Invalid username.' })
         return
