@@ -47,9 +47,6 @@ export default function HomePage() {
 
   useEffect(() => {
     setPlayerId(getOrCreatePlayerId())
-  }, [])
-
-  useEffect(() => {
     void syncPlayersFromBackend()
   }, [])
 

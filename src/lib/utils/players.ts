@@ -229,7 +229,7 @@ const getCurrentProfile = (): PlayerProfile | null => {
   }
 }
 
-const fetchBackend = async <T,>(path: string, options?: RequestInit): Promise<T | null> => {
+const fetchBackend = async <T>(path: string, options?: RequestInit): Promise<T | null> => {
   if (!BACKEND_URL) return null
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
