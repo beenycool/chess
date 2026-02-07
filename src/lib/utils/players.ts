@@ -64,10 +64,7 @@ const toPublicProfile = (player: StoredPlayer): PlayerProfile => ({
 
 const PASSWORD_ITERATIONS = 1_000_000
 
-const bytesToHex = (bytes: Uint8Array) =>
-  Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
+const bytesToHex = (bytes: Uint8Array) => Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')
 
 const hexToBytes = (hex: string) => {
   const matches = hex.match(/.{1,2}/g)
@@ -176,12 +173,11 @@ export const signInPlayer = async (
   if (!USERNAME_PATTERN.test(normalizedUsername)) {
     return { success: false, error: 'Use only letters, numbers, dashes, and underscores.' }
   }
-  const usernameKey = normalizedUsername
   if (!password) return { success: false, error: 'Password is required.' }
 
   const players = getStoredPlayerData()
   const existingIndex = players.findIndex(
-    (player) => getUsernameKey(player.username) === usernameKey
+    (player) => getUsernameKey(player.username) === normalizedUsername
   )
 
   if (existingIndex >= 0) {
@@ -195,12 +191,12 @@ export const signInPlayer = async (
       }
       const updatedPlayer: StoredPlayer = {
         ...existing,
-        username: usernameKey,
+        username: normalizedUsername,
       }
       const updatedPlayers = [...players]
       updatedPlayers[existingIndex] = updatedPlayer
       savePlayers(updatedPlayers)
-      localStorage.setItem(CURRENT_PLAYER_KEY, usernameKey)
+      localStorage.setItem(CURRENT_PLAYER_KEY, normalizedUsername)
       notifyPlayers()
       return { success: true, player: toPublicProfile(updatedPlayer) }
     }
@@ -222,14 +218,14 @@ export const signInPlayer = async (
 
     const updatedPlayer: StoredPlayer = {
       ...existing,
-      username: usernameKey,
+      username: normalizedUsername,
       password: saltedHash,
       salt: newSalt,
     }
     const updatedPlayers = [...players]
     updatedPlayers[existingIndex] = updatedPlayer
     savePlayers(updatedPlayers)
-    localStorage.setItem(CURRENT_PLAYER_KEY, usernameKey)
+    localStorage.setItem(CURRENT_PLAYER_KEY, normalizedUsername)
     notifyPlayers()
     return { success: true, player: toPublicProfile(updatedPlayer) }
   }
@@ -240,7 +236,7 @@ export const signInPlayer = async (
   if (!saltedHash) return { success: false, error: 'Unable to secure password.' }
 
   const newPlayer: StoredPlayer = {
-    username: usernameKey,
+    username: normalizedUsername,
     password: saltedHash,
     salt: newSalt,
     stats: defaultStats(),

@@ -87,8 +87,7 @@ export default function HomePage() {
             <CardHeader className="text-center space-y-2">
               <CardTitle className="text-3xl font-bold">Chess</CardTitle>
               <CardDescription>
-                Signed in as <span className="font-medium text-foreground">{currentPlayer.username}</span>. Create a
-                game and share the invite link.
+                Signed in as <span className="font-medium text-foreground">{currentPlayer.username}</span>. Create a game and share the invite link.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
