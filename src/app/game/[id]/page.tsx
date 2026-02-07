@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { SignInCard } from '@/components/auth/sign-in-card'
 import { 
   ChessBoard, 
   ChessClock, 
@@ -16,15 +15,7 @@ import {
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
 import { copyToClipboard } from '@/lib/utils/helpers'
-import { getCurrentPlayer, subscribePlayers, updatePlayerStats, type PlayerProfile } from '@/lib/utils/players'
 import { toast } from 'sonner'
-
-const emptyPlayerSnapshot: PlayerProfile | null = null
-const determinePlayerResult = (result: string, playerColor: 'white' | 'black' | null): 'win' | 'loss' | 'draw' => {
-  if (result === 'draw') return 'draw'
-  if (result === playerColor) return 'win'
-  return 'loss'
-}
 
 export default function GamePage() {
   const params = useParams()
@@ -32,6 +23,13 @@ export default function GamePage() {
   const gameId = params.id as string
   
   const storedOptions = useMemo(() => {
+    const urlTC = searchParams.get('timeControl')
+    const urlColor = searchParams.get('color')
+    if (urlTC) {
+        return { timeControl: urlTC, color: (urlColor as 'white' | 'black' | 'random') || 'random' }
+    }
+
+    if (typeof window === 'undefined') return null
     const rawOptions = sessionStorage.getItem(`game-options:${gameId}`)
     if (!rawOptions) return null
     try {
@@ -39,21 +37,19 @@ export default function GamePage() {
     } catch {
       return null
     }
-  }, [gameId])
+  }, [gameId, searchParams])
 
-  const timeControl = searchParams.get('timeControl') || storedOptions?.timeControl || undefined
+  const timeControl = storedOptions?.timeControl || undefined
   const color = storedOptions?.color || undefined
 
-  const [showGameOver, setShowGameOver] = useState(false)
-  const currentPlayer = useSyncExternalStore(subscribePlayers, getCurrentPlayer, () => emptyPlayerSnapshot)
-  const statsRecordedRef = useRef(false)
-  
   const {
     game,
     gameState,
     playerColor,
     isConnected,
   } = useGameStore()
+
+  const showGameOver = game?.status === 'completed'
 
   const peerOptions = useMemo(
     () => timeControl || color ? { timeControl, color } : undefined,
@@ -68,28 +64,6 @@ export default function GamePage() {
     acceptDraw,
     handleTimeout,
   } = usePeerGame(gameId, peerOptions)
-
-  useEffect(() => {
-    statsRecordedRef.current = false
-  }, [gameId])
-
-  // Show game over dialog when game ends
-  useEffect(() => {
-    if (game?.status === 'completed') {
-      setShowGameOver(true)
-    }
-  }, [game?.status])
-
-  useEffect(() => {
-    if (!game || game.status !== 'completed' || statsRecordedRef.current) return
-    if (!game.result) return
-    if (!playerColor || !currentPlayer) return
-
-    const result = determinePlayerResult(game.result, playerColor)
-
-    updatePlayerStats(currentPlayer.username, result)
-    statsRecordedRef.current = true
-  }, [currentPlayer, game, playerColor])
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
@@ -116,7 +90,7 @@ export default function GamePage() {
     if (!result.success) {
       toast.error(result.error || 'Invalid move')
     }
-    return result
+    return { success: result.success }
   }, [makeMove])
 
   const handleWhiteTimeout = useCallback(() => {
@@ -130,17 +104,6 @@ export default function GamePage() {
       handleTimeout('black')
     }
   }, [playerColor, handleTimeout])
-
-  if (!currentPlayer) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        <SignInCard
-          title="Join Game"
-          description="Sign in with a username and password to join this match."
-        />
-      </main>
-    )
-  }
 
   if (!game || !gameState) {
     return (
@@ -161,7 +124,6 @@ export default function GamePage() {
   return (
     <main className="min-h-screen p-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold">Chess Game</h1>
@@ -173,7 +135,6 @@ export default function GamePage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Player: {currentPlayer.username}</span>
             <span className="text-sm text-muted-foreground">{game.time_control}</span>
             <Button variant="outline" size="sm" onClick={handleCopyInviteLink}>
               Copy Invite Link
@@ -181,7 +142,6 @@ export default function GamePage() {
           </div>
         </div>
 
-        {/* Waiting for opponent */}
         {isWaitingForOpponent && (
           <Card className="mb-4">
             <CardContent className="p-4">
@@ -214,11 +174,8 @@ export default function GamePage() {
           </Card>
         )}
 
-        {/* Game Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
-          {/* Board Section */}
           <div className="flex flex-col gap-4">
-            {/* Opponent Clock */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-slate-800 border border-slate-600" />
@@ -232,13 +189,11 @@ export default function GamePage() {
               />
             </div>
 
-            {/* Chess Board */}
             <ChessBoard 
               onMove={handleMove}
               disabled={game.status !== 'active'}
             />
 
-            {/* Player Clock */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-white border border-slate-300" />
@@ -254,9 +209,7 @@ export default function GamePage() {
             </div>
           </div>
 
-          {/* Side Panel */}
           <div className="flex flex-col gap-4">
-            {/* Status */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Game Status</CardTitle>
@@ -281,7 +234,6 @@ export default function GamePage() {
               </CardContent>
             </Card>
 
-            {/* Move History */}
             <Card className="flex-1">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Moves</CardTitle>
@@ -291,7 +243,6 @@ export default function GamePage() {
               </CardContent>
             </Card>
 
-            {/* Controls */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Controls</CardTitle>
@@ -307,11 +258,9 @@ export default function GamePage() {
           </div>
         </div>
 
-        {/* Game Over Dialog */}
         <GameOverDialog 
           open={showGameOver} 
           onRematch={() => {
-            // For now, just redirect to home to create new game
             window.location.href = '/'
           }}
         />

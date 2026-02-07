@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useGameStore } from '@/store/game-store'
 import { formatTimeWithTenths } from '@/lib/utils/helpers'
 import { cn } from '@/lib/utils'
@@ -15,52 +15,53 @@ export function ChessClock({ color, onTimeout }: ChessClockProps) {
   const [displayTime, setDisplayTime] = useState(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const hasCalledTimeout = useRef(false)
+  const onTimeoutRef = useRef(onTimeout)
 
   const initialTime = color === 'white' ? gameState?.white_time_ms : gameState?.black_time_ms
   const isMyTurn = gameState?.turn === (color === 'white' ? 'w' : 'b')
   const isGameActive = game?.status === 'active'
-  const isLowTime = displayTime < 30000 // Less than 30 seconds
+
+  // Update ref when prop changes
+  useEffect(() => {
+    onTimeoutRef.current = onTimeout
+  }, [onTimeout])
 
   useEffect(() => {
-    if (!gameState || !isGameActive) {
+    if (!gameState || !isGameActive || !isMyTurn) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDisplayTime(initialTime || 0)
       return
     }
 
-    if (isMyTurn && gameState.last_move_at) {
-      // Calculate time elapsed since last move
-      const elapsed = Date.now() - new Date(gameState.last_move_at).getTime()
+    const lastMoveTime = gameState.last_move_at ? new Date(gameState.last_move_at).getTime() : Date.now()
+
+    const updateTime = () => {
+      const elapsed = Date.now() - lastMoveTime
       const remaining = Math.max(0, (initialTime || 0) - elapsed)
       setDisplayTime(remaining)
 
-      // Start countdown
-      intervalRef.current = setInterval(() => {
-        setDisplayTime((prev) => {
-          const newTime = Math.max(0, prev - 100)
-          if (newTime === 0 && !hasCalledTimeout.current) {
-            hasCalledTimeout.current = true
-            onTimeout?.()
-          }
-          return newTime
-        })
-      }, 100)
-    } else {
-      setDisplayTime(initialTime || 0)
+      if (remaining === 0 && !hasCalledTimeout.current) {
+        hasCalledTimeout.current = true
+        onTimeoutRef.current?.()
+      }
     }
+
+    updateTime()
+    intervalRef.current = setInterval(updateTime, 100)
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
       }
     }
-  }, [gameState, initialTime, isMyTurn, isGameActive, onTimeout])
+  }, [gameState, initialTime, isMyTurn, isGameActive]) // Removed onTimeout
 
-  // Reset timeout flag when game state changes
   useEffect(() => {
     hasCalledTimeout.current = false
   }, [gameState?.move_index])
 
   const isPlayerClock = playerColor === color
+  const isLowTime = displayTime < 30000
 
   return (
     <div

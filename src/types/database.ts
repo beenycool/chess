@@ -6,163 +6,249 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
-      games: {
-        Row: {
-          id: string
-          status: string
-          time_control: string
-          initial_time_ms: number
-          increment_ms: number
-          white_player_id: string | null
-          black_player_id: string | null
-          result: string | null
-          result_reason: string | null
-          created_at: string
-          started_at: string | null
-          ended_at: string | null
-        }
-        Insert: {
-          id: string
-          status?: string
-          time_control?: string
-          initial_time_ms?: number
-          increment_ms?: number
-          white_player_id?: string | null
-          black_player_id?: string | null
-          result?: string | null
-          result_reason?: string | null
-          created_at?: string
-          started_at?: string | null
-          ended_at?: string | null
-        }
-        Update: {
-          id?: string
-          status?: string
-          time_control?: string
-          initial_time_ms?: number
-          increment_ms?: number
-          white_player_id?: string | null
-          black_player_id?: string | null
-          result?: string | null
-          result_reason?: string | null
-          created_at?: string
-          started_at?: string | null
-          ended_at?: string | null
-        }
-      }
       game_states: {
         Row: {
-          id: number
-          game_id: string
-          fen: string
-          pgn: string
-          move_index: number
-          turn: string
-          white_time_ms: number
           black_time_ms: number
-          last_move_at: string | null
+          draw_reason: string | null
+          fen: string
+          game_id: string
+          id: number
           is_check: boolean
           is_checkmate: boolean
-          is_stalemate: boolean
           is_draw: boolean
-          draw_reason: string | null
-          last_move_san: string | null
+          is_stalemate: boolean
+          last_move_at: string | null
           last_move_from: string | null
+          last_move_san: string | null
           last_move_to: string | null
+          move_index: number
+          pgn: string
+          turn: string
           updated_at: string
+          white_time_ms: number
         }
         Insert: {
-          id?: number
-          game_id: string
-          fen?: string
-          pgn?: string
-          move_index?: number
-          turn?: string
-          white_time_ms: number
           black_time_ms: number
-          last_move_at?: string | null
+          draw_reason?: string | null
+          fen?: string
+          game_id: string
+          id?: number
           is_check?: boolean
           is_checkmate?: boolean
-          is_stalemate?: boolean
           is_draw?: boolean
-          draw_reason?: string | null
-          last_move_san?: string | null
+          is_stalemate?: boolean
+          last_move_at?: string | null
           last_move_from?: string | null
+          last_move_san?: string | null
           last_move_to?: string | null
+          move_index?: number
+          pgn?: string
+          turn?: string
           updated_at?: string
+          white_time_ms: number
         }
         Update: {
-          id?: number
-          game_id?: string
-          fen?: string
-          pgn?: string
-          move_index?: number
-          turn?: string
-          white_time_ms?: number
           black_time_ms?: number
-          last_move_at?: string | null
+          draw_reason?: string | null
+          fen?: string
+          game_id?: string
+          id?: number
           is_check?: boolean
           is_checkmate?: boolean
-          is_stalemate?: boolean
           is_draw?: boolean
-          draw_reason?: string | null
-          last_move_san?: string | null
+          is_stalemate?: boolean
+          last_move_at?: string | null
           last_move_from?: string | null
+          last_move_san?: string | null
           last_move_to?: string | null
+          move_index?: number
+          pgn?: string
+          turn?: string
           updated_at?: string
+          white_time_ms?: number
         }
+        Relationships: [
+          {
+            foreignKeyName: "game_states_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: true
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          black_id: string | null
+          black_player_id: string | null
+          created_at: string
+          ended_at: string | null
+          id: string
+          increment_ms: number
+          initial_time_ms: number
+          result: string | null
+          result_reason: string | null
+          started_at: string | null
+          status: string
+          time_control: string
+          white_id: string | null
+          white_player_id: string | null
+        }
+        Insert: {
+          black_id?: string | null
+          black_player_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          id: string
+          increment_ms?: number
+          initial_time_ms?: number
+          result?: string | null
+          result_reason?: string | null
+          started_at?: string | null
+          status?: string
+          time_control?: string
+          white_id?: string | null
+          white_player_id?: string | null
+        }
+        Update: {
+          black_id?: string | null
+          black_player_id?: string | null
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          increment_ms?: number
+          initial_time_ms?: number
+          result?: string | null
+          result_reason?: string | null
+          started_at?: string | null
+          status?: string
+          time_control?: string
+          white_id?: string | null
+          white_player_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_black_id_fkey"
+            columns: ["black_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_white_id_fkey"
+            columns: ["white_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       moves: {
         Row: {
-          id: number
-          game_id: string
-          move_index: number
-          san: string
-          uci: string
           fen_after: string
-          played_by: string
-          time_remaining_ms: number
+          game_id: string
+          id: number
+          move_index: number
           played_at: string
+          played_by: string
+          san: string
+          time_remaining_ms: number
+          uci: string
         }
         Insert: {
-          id?: number
-          game_id: string
-          move_index: number
-          san: string
-          uci: string
           fen_after: string
-          played_by: string
-          time_remaining_ms: number
+          game_id: string
+          id?: number
+          move_index: number
           played_at?: string
+          played_by: string
+          san: string
+          time_remaining_ms: number
+          uci: string
         }
         Update: {
-          id?: number
-          game_id?: string
-          move_index?: number
-          san?: string
-          uci?: string
           fen_after?: string
-          played_by?: string
-          time_remaining_ms?: number
+          game_id?: string
+          id?: number
+          move_index?: number
           played_at?: string
+          played_by?: string
+          san?: string
+          time_remaining_ms?: number
+          uci?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "moves_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          draws: number
+          elo: number
+          id: string
+          losses: number
+          username: string
+          wins: number
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          draws?: number
+          elo?: number
+          id: string
+          losses?: number
+          username: string
+          wins?: number
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          draws?: number
+          elo?: number
+          id?: string
+          losses?: number
+          username?: string
+          wins?: number
+        }
+        Relationships: []
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      update_player_elo_rating: {
+        Args: {
+          player_id: string
+          opponent_elo: number
+          outcome: string
+        }
+        Returns: void
+      }
     }
     Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
       [_ in never]: never
     }
   }
 }
 
 export type Game = Database['public']['Tables']['games']['Row']
+// Note: white_player_id and black_player_id are transient P2P session IDs.
+// white_id and black_id are persistent Supabase Profile IDs.
 export type GameState = Database['public']['Tables']['game_states']['Row']
 export type Move = Database['public']['Tables']['moves']['Row']
+export type Profile = Database['public']['Tables']['profiles']['Row']

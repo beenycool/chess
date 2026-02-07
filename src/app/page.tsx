@@ -1,107 +1,164 @@
 'use client'
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import { useRouter } from 'next/navigation'
+import { Game } from "@/types/database"
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { nanoid } from 'nanoid'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { SignInCard } from '@/components/auth/sign-in-card'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from '@/components/ui/select'
-import { TIME_CONTROLS, DEFAULT_TIME_CONTROL } from '@/lib/constants'
-import { getOrCreatePlayerId, generateGameId } from '@/lib/utils/helpers'
-import {
-  getCurrentPlayer,
-  getStoredPlayers,
-  getWinRate,
-  signOutPlayer,
-  subscribePlayers,
-  syncPlayersFromBackend,
-  type PlayerProfile,
-} from '@/lib/utils/players'
+import { useAuth } from '@/hooks/use-auth'
+import { createBrowserSupabase } from '@/lib/supabase'
+import { Badge } from '@/components/ui/badge'
+import { Play, Plus, Users, Globe } from 'lucide-react'
+import { TIME_CONTROLS } from '@/lib/constants'
 
-const emptyPlayersSnapshot: PlayerProfile[] = []
-const emptyPlayerSnapshot: PlayerProfile | null = null
-
-const sortPlayersByRanking = (a: PlayerProfile, b: PlayerProfile) => {
-  const winRateDiff = getWinRate(b.stats) - getWinRate(a.stats)
-  if (winRateDiff !== 0) return winRateDiff
-  const winDiff = b.stats.wins - a.stats.wins
-  if (winDiff !== 0) return winDiff
-  const gamesDiff = b.stats.games - a.stats.games
-  if (gamesDiff !== 0) return gamesDiff
-  return a.username.localeCompare(b.username)
+// Define a concrete type for games with player info
+type GameWithPlayers = Game & {
+  white: { username: string; elo: number } | null
+  black: { username: string; elo: number } | null
 }
 
-export default function HomePage() {
+export default function Home() {
   const router = useRouter()
-  const [timeControl, setTimeControl] = useState(DEFAULT_TIME_CONTROL.name)
-  const [colorPreference, setColorPreference] = useState<'random' | 'white' | 'black'>('random')
-  const [playerId, setPlayerId] = useState<string | null>(null)
-  const players = useSyncExternalStore(subscribePlayers, getStoredPlayers, () => emptyPlayersSnapshot)
-  const currentPlayer = useSyncExternalStore(subscribePlayers, getCurrentPlayer, () => emptyPlayerSnapshot)
+  const searchParams = useSearchParams()
+  const { user, profile } = useAuth()
+  const [timeControl, setTimeControl] = useState('10+0')
+  const [color, setColor] = useState('random')
+  const [activeGames, setActiveGames] = useState<GameWithPlayers[]>([])
+  const [loading, setLoading] = useState(true)
+  const [lobbyError, setLobbyError] = useState<string | null>(null)
+  const supabase = createBrowserSupabase()
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Initialize options from URL if present
+  useEffect(() => {
+    const tc = searchParams.get('timeControl')
+    const c = searchParams.get('color')
+    if (tc && TIME_CONTROLS.some(t => t.name === tc)) setTimeControl(tc)
+    if (c && ['white', 'black', 'random'].includes(c)) setColor(c)
+  }, [searchParams])
+
+  const fetchActiveGames = useCallback(async () => {
+    setLobbyError(null)
+    const { data, error } = await supabase
+      .from('games')
+      .select(`
+        *,
+        white:white_id(username, elo),
+        black:black_id(username, elo)
+      `)
+      .eq('status', 'waiting')
+      .limit(10)
+
+    if (error) {
+        console.error('Error fetching active games:', error)
+        setLobbyError('Failed to load active games')
+    } else if (data) {
+        // Cast to our defined type
+        setActiveGames(data as unknown as GameWithPlayers[])
+    }
+    setLoading(false)
+  }, [supabase])
 
   useEffect(() => {
-    setPlayerId(getOrCreatePlayerId())
-    void syncPlayersFromBackend()
-  }, [])
+<<<<<<< HEAD
+    fetchActiveGames()
+=======
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchActiveGames()
+    // Set up real-time subscription for active games, filtered by status=waiting
+>>>>>>> bcba45a (Merge PR #8: Refactor chess app for stability and type safety)
+    const channel = supabase
+      .channel('public:games')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'games',
+        filter: 'status=eq.waiting'
+      }, () => {
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchActiveGames()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchActiveGames, supabase])
 
   const handleCreateGame = () => {
-    if (!playerId) return
-    
-    const gameId = generateGameId()
+    const gameId = nanoid(10)
+<<<<<<< HEAD
+    sessionStorage.setItem(`game-options:${gameId}`, JSON.stringify({
+      timeControl,
+      color
+    }))
+    router.push(`/game/${gameId}`)
+=======
+    // Encode options in URL
     const params = new URLSearchParams()
     params.set('timeControl', timeControl)
+    params.set('color', color)
 
-    sessionStorage.setItem(
-      `game-options:${gameId}`,
-      JSON.stringify({ timeControl, color: colorPreference })
-    )
+    // Also save to session storage as fallback
+    if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`game-options:${gameId}`, JSON.stringify({
+            timeControl,
+            color
+        }))
+    }
 
     router.push(`/game/${gameId}?${params.toString()}`)
+>>>>>>> bcba45a (Merge PR #8: Refactor chess app for stability and type safety)
   }
 
-  const leaderboard = useMemo(
-    () =>
-      [...players]
-        .sort(sortPlayersByRanking)
-        .slice(0, 5),
-    [players]
-  )
-
-  const handleSignOut = () => {
-    signOutPlayer()
+  const handleJoinGame = (gameId: string) => {
+    router.push(`/game/${gameId}`)
   }
 
-  const currentStats = currentPlayer?.stats
-  const winRate = currentPlayer ? Math.round(getWinRate(currentPlayer.stats) * 100) : 0
+  const initial = profile?.username?.[0] ? profile.username[0].toUpperCase() : 'U'
 
   return (
-    <main className="min-h-screen p-4">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {currentPlayer ? (
-          <Card className="w-full">
-            <CardHeader className="text-center space-y-2">
-              <CardTitle className="text-3xl font-bold">Chess</CardTitle>
-              <CardDescription>
-                Signed in as <span className="font-medium text-foreground">{currentPlayer.username}</span>. Create a game and share the invite link.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+    <main className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
+      <div className="text-center py-8 space-y-4">
+        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight">
+          Play Chess with Friends
+        </h1>
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          Create a room, invite a friend, and play instantly in your browser.
+          No complex setup, just pure chess.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <Card className="border-2 border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-primary" />
+              Create New Game
+            </CardTitle>
+            <CardDescription>Configure your match and invite an opponent</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Time Control</label>
+                <label htmlFor="time-control-select" className="text-sm font-medium">Time Control</label>
                 <Select value={timeControl} onValueChange={setTimeControl}>
-                  <SelectTrigger>
-                    <SelectValue />
+                  <SelectTrigger id="time-control-select">
+                    <SelectValue placeholder="Select time control" />
                   </SelectTrigger>
                   <SelectContent>
                     {TIME_CONTROLS.map((tc) => (
                       <SelectItem key={tc.name} value={tc.name}>
-                        {tc.label}
+                        {tc.name} ({tc.label})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -109,10 +166,10 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Play as</label>
-                <Select value={colorPreference} onValueChange={(v) => setColorPreference(v as typeof colorPreference)}>
-                  <SelectTrigger>
-                    <SelectValue />
+                <label htmlFor="color-select" className="text-sm font-medium">Your Color</label>
+                <Select value={color} onValueChange={setColor}>
+                  <SelectTrigger id="color-select">
+                    <SelectValue placeholder="Select color" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="random">Random</SelectItem>
@@ -121,92 +178,122 @@ export default function HomePage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              <Button className="w-full" size="lg" onClick={handleCreateGame} disabled={!playerId}>
-                Create Game
-              </Button>
+            <Button
+              className="w-full py-6 text-lg"
+              onClick={handleCreateGame}
+            >
+              <Play className="w-5 h-5 mr-2 fill-current" />
+              Create Game Room
+            </Button>
 
-              <div className="flex flex-col items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleSignOut}>
-                  Sign Out
-                </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  Hosted on Vercel. Stats stay in this browser for your friends’ leaderboard.
+            {!user && (
+              <p className="text-xs text-center text-yellow-500 bg-yellow-500/10 p-2 rounded">
+                Note: Game history and Elo updates require login.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="w-5 h-5 text-primary" />
+              Live Lobby
+            </CardTitle>
+            <CardDescription>Join a waiting game or spectate</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
+                ))}
+              </div>
+            ) : lobbyError ? (
+                <div className="text-center py-12 space-y-2">
+                    <p className="text-red-500">{lobbyError}</p>
+                    <Button variant="link" onClick={() => // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchActiveGames()}>Retry</Button>
+                </div>
+            ) : activeGames.length === 0 ? (
+              <div className="text-center py-12 space-y-4 border-2 border-dashed rounded-xl">
+                <Users className="w-12 h-12 text-muted-foreground mx-auto" />
+                <p className="text-muted-foreground">No active games waiting. Be the first to create one!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeGames.map((game) => (
+                  <div
+                    key={game.id}
+                    className="flex items-center justify-between p-4 border rounded-xl hover:bg-muted/50 transition-colors group"
+                  >
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold">
+                          {game.white?.username || game.black?.username || 'Guest'}&apos;s Game
+                        </span>
+                        <Badge variant="secondary" className="text-[10px] px-1 h-4">
+                          {game.time_control}
+                        </Badge>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        Hosted by {game.white?.username || game.black?.username || 'Anonymous'}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="group-hover:bg-primary group-hover:text-primary-foreground transition-all"
+                      onClick={() => handleJoinGame(game.id)}
+                    >
+                      Join Match
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {user && profile && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">
+                {initial}
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">{profile.username}</h3>
+                <p className="text-sm text-muted-foreground">Elo: {profile.elo}</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-center px-4 border-r">
+                <p className="text-xs text-muted-foreground uppercase">Wins</p>
+                <p className="font-bold text-green-500">{profile.wins}</p>
+              </div>
+              <div className="text-center px-4 border-r">
+                <p className="text-xs text-muted-foreground uppercase">Losses</p>
+                <p className="font-bold text-red-500">{profile.losses}</p>
+              </div>
+              <div className="text-center px-4">
+                <p className="text-xs text-muted-foreground uppercase">Win Rate</p>
+                <p className="font-bold">
+                  {profile.wins + profile.losses + profile.draws > 0
+                    ? Math.round((profile.wins / (profile.wins + profile.losses + profile.draws)) * 100)
+                    : 0}%
                 </p>
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="flex justify-center">
-            <SignInCard
-              title="Chess"
-              description="Sign in with a username and password to play with friends."
-            />
-          </div>
-        )}
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Leaderboard</CardTitle>
-              <CardDescription>Top players on this device.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {leaderboard.length ? (
-                leaderboard.map((player, index) => (
-                  <div key={player.username} className="flex items-center justify-between text-sm">
-                    <span className="font-medium">
-                      {index + 1}. {player.username}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {player.stats.wins}-{player.stats.losses}-{player.stats.draws}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">No results yet. Play a game to get started.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Trackers</CardTitle>
-              <CardDescription>Your wins, losses, and draws.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {currentStats ? (
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-md border p-3">
-                    <p className="text-muted-foreground">Games</p>
-                    <p className="text-lg font-semibold">{currentStats.games}</p>
-                  </div>
-                  <div className="rounded-md border p-3">
-                    <p className="text-muted-foreground">Win rate</p>
-                    <p className="text-lg font-semibold">{winRate}%</p>
-                  </div>
-                  <div className="rounded-md border p-3">
-                    <p className="text-muted-foreground">Wins</p>
-                    <p className="text-lg font-semibold">{currentStats.wins}</p>
-                  </div>
-                  <div className="rounded-md border p-3">
-                    <p className="text-muted-foreground">Losses</p>
-                    <p className="text-lg font-semibold">{currentStats.losses}</p>
-                  </div>
-                  <div className="rounded-md border p-3 col-span-2">
-                    <p className="text-muted-foreground">Draws</p>
-                    <p className="text-lg font-semibold">{currentStats.draws}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Sign in with your username to start tracking your games.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            </div>
+            <Button variant="link" asChild>
+              <Link href="/profile">View Full History →</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </main>
   )
 }

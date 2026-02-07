@@ -38,6 +38,8 @@ export function createInitialGame(gameId: string, options: GameOptions): { game:
     increment_ms: timeControl.incrementMs,
     white_player_id: whitePlayerId,
     black_player_id: blackPlayerId,
+    white_id: null,
+    black_id: null,
     result: null,
     result_reason: null,
     created_at: now,

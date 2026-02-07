@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "@/hooks/use-auth";
+import { Navbar } from "@/components/navbar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Chess - Play with Friends",
-  description: "Play chess online with friends. No sign-up required.",
+  description: "Play chess online with friends.",
 };
 
 export default function RootLayout({
@@ -28,8 +30,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background`}
       >
-        {children}
-        <Toaster position="top-center" />
+        <AuthProvider>
+          <div className="flex flex-col min-h-screen">
+            <Navbar />
+            <div className="flex-1">
+              {children}
+            </div>
+          </div>
+          <Toaster position="top-center" />
+        </AuthProvider>
       </body>
     </html>
   );
