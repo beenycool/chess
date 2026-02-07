@@ -15,6 +15,8 @@ import { Trophy, User as UserIcon, LogOut, Swords } from 'lucide-react'
 export function Navbar() {
   const { user, profile, signOut } = useAuth()
 
+  const initial = profile?.username?.[0] ?? 'U'
+
   return (
     <nav className="border-b bg-card sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -41,9 +43,9 @@ export function Navbar() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="flex items-center gap-2 pl-1 pr-3">
                   <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center font-bold text-xs">
-                    {profile?.username?.[0].toUpperCase() || 'U'}
+                    {initial.toUpperCase()}
                   </div>
-                  <span className="max-w-[100px] truncate hidden xs:inline">
+                  <span className="max-w-[100px] truncate hidden sm:inline">
                     {profile?.username || 'Profile'}
                   </span>
                 </Button>

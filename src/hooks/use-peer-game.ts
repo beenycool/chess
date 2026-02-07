@@ -11,7 +11,7 @@ import { useGameStore } from '@/store/game-store'
 import type { Game, GameState, Move } from '@/types/database'
 import { useAuth } from '@/hooks/use-auth'
 import { recordGameResult } from '@/lib/game-results'
-import { supabase } from '@/lib/supabase'
+import { createBrowserSupabase } from '@/lib/supabase'
 
 type Message =
   | { type: 'SYNC_GAME', payload: { game: Game, gameState: GameState, moves: Move[] } }
@@ -23,6 +23,7 @@ type Message =
 export function usePeerGame(gameId: string, initialOptions?: { timeControl?: string, color?: string }) {
   const { profile } = useAuth()
   const [playerId] = useState(() => Math.random().toString(36).substring(2, 15))
+  const supabase = createBrowserSupabase()
 
   const {
     setGame,
@@ -36,6 +37,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
   } = useGameStore()
 
   const [isHost, setIsHost] = useState(false)
+  const isHostRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
 
   const peerRef = useRef<PeerType | null>(null)
@@ -46,6 +48,10 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
   useEffect(() => {
     gameStateRef.current = { game: gameStore, gameState: gameStateStore, moves: movesStore }
   }, [gameStore, gameStateStore, movesStore])
+
+  useEffect(() => {
+    isHostRef.current = isHost
+  }, [isHost])
 
   // --- Utilities ---
 
@@ -76,7 +82,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
   }, [])
 
   const handleGameCompletion = useCallback(async (updatedGame: Game) => {
-    if (!isHost) return
+    if (!isHostRef.current) return
 
     await recordGameResult({
       gameId: updatedGame.id,
@@ -86,11 +92,11 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
       reason: updatedGame.result_reason || 'unknown',
       pgn: gameStateRef.current.gameState?.pgn || '',
     })
-  }, [isHost])
+  }, [])
 
   const publishGameToSupabase = useCallback(async (game: Game) => {
-    if (!isHost) return
-    const { error } = await supabase.from('games').upsert({
+    if (!isHostRef.current) return
+    const { error: supabaseError } = await supabase.from('games').upsert({
       id: game.id,
       status: game.status,
       time_control: game.time_control,
@@ -101,8 +107,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
       initial_time_ms: game.initial_time_ms,
       increment_ms: game.increment_ms,
     })
-    if (error) console.error('Error publishing game to Supabase', error)
-  }, [isHost])
+    if (supabaseError) console.error('Error publishing game to Supabase', supabaseError)
+  }, [supabase])
 
   // --- Handlers ---
 
@@ -126,7 +132,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         break
       }
       case 'offer_draw': {
-        broadcast({ type: 'ACTION', payload: payload as any })
+        broadcast({ type: 'ACTION', payload })
         return
       }
       case 'accept_draw': {
@@ -162,7 +168,19 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
   }, [broadcast, setGame, handleGameCompletion, publishGameToSupabase])
 
   const isValidMessage = (data: unknown): data is Message => {
-    return !!data && typeof (data as any).type === 'string'
+    if (!data || typeof data !== 'object') return false
+    const msg = data as Record<string, any>
+    if (typeof msg.type !== 'string') return false
+
+    // Basic payload check
+    if (!msg.payload) return false
+
+    // Specific payload validation could go here
+    if (msg.type === 'MAKE_MOVE') {
+      return typeof msg.payload.from === 'string' && typeof msg.payload.to === 'string'
+    }
+
+    return true
   }
 
   const handleMessageAsHost = useCallback(async (msg: Message, senderConn: DataConnection) => {
@@ -174,8 +192,10 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         const result = tryJoinGame(game, msg.payload.playerId, msg.payload.color)
         if (result.success && result.game) {
           const updatedGame = { ...result.game }
-          if (msg.payload.color === 'white') updatedGame.white_id = msg.payload.profileId || null
-          else updatedGame.black_id = msg.payload.profileId || null
+
+          // Use result.color to correctly assign ID
+          if (result.color === 'white') updatedGame.white_id = msg.payload.profileId || null
+          else if (result.color === 'black') updatedGame.black_id = msg.payload.profileId || null
 
           setGame(updatedGame)
           broadcast({
@@ -322,7 +342,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
   // --- Public Interface ---
 
   const joinGame = useCallback(async (color: 'white' | 'black'): Promise<{ success: boolean, error?: string }> => {
-    if (isHost) {
+    if (isHostRef.current) {
         const { game } = gameStateRef.current
         if (!game) return { success: false, error: 'Game not found' }
         const result = tryJoinGame(game, playerId, color)
@@ -348,10 +368,10 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         })
         return { success: true }
     }
-  }, [isHost, playerId, profile, sendToHost, broadcast, setGame, setPlayerColor, publishGameToSupabase])
+  }, [playerId, profile, sendToHost, broadcast, setGame, setPlayerColor, publishGameToSupabase])
 
-  const makeMove = useCallback(async (from: string, to: string, promotion?: string): Promise<{ success: boolean, error?: string }> => {
-    if (isHost) {
+  const makeMove = useCallback(async (from: string, to: string, promotion?: string): Promise<{ success: boolean, error?: string, pending?: boolean }> => {
+    if (isHostRef.current) {
         const { game, gameState, moves } = gameStateRef.current
         if (!game || !gameState) return { success: false, error: 'Game not found' }
         const result = processMove(game, gameState, { from, to, promotion })
@@ -375,29 +395,30 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         return { success: false, error: result.error || 'Invalid move' }
     } else {
         sendToHost({ type: 'MAKE_MOVE', payload: { from, to, promotion } })
-        return { success: true }
+        // Return pending status for guest
+        return { success: true, pending: true }
     }
-  }, [isHost, sendToHost, broadcast, setGame, setGameState, setMoves, handleGameCompletion])
+  }, [sendToHost, broadcast, setGame, setGameState, setMoves, handleGameCompletion])
 
-  const resign = useCallback(async () => {
-     if (isHost) handleActionAsHost({ action: 'resign', playerId })
+  const resign = useCallback(() => {
+     if (isHostRef.current) handleActionAsHost({ action: 'resign', playerId })
      else sendToHost({ type: 'ACTION', payload: { action: 'resign', playerId } })
-  }, [isHost, playerId, sendToHost, handleActionAsHost])
+  }, [playerId, sendToHost, handleActionAsHost])
 
-  const offerDraw = useCallback(async () => {
-     if (isHost) broadcast({ type: 'ACTION', payload: { action: 'offer_draw', playerId } })
+  const offerDraw = useCallback(() => {
+     if (isHostRef.current) broadcast({ type: 'ACTION', payload: { action: 'offer_draw', playerId } })
      else sendToHost({ type: 'ACTION', payload: { action: 'offer_draw', playerId } })
-  }, [broadcast, isHost, playerId, sendToHost])
+  }, [broadcast, playerId, sendToHost])
 
-  const acceptDraw = useCallback(async () => {
-     if (isHost) handleActionAsHost({ action: 'accept_draw', playerId })
+  const acceptDraw = useCallback(() => {
+     if (isHostRef.current) handleActionAsHost({ action: 'accept_draw', playerId })
      else sendToHost({ type: 'ACTION', payload: { action: 'accept_draw', playerId } })
-  }, [handleActionAsHost, isHost, playerId, sendToHost])
+  }, [handleActionAsHost, playerId, sendToHost])
 
-  const handleTimeout = useCallback(async (loser: 'white' | 'black') => {
-     if (isHost) handleActionAsHost({ action: 'timeout', playerId, loser })
+  const handleTimeout = useCallback((loser: 'white' | 'black') => {
+     if (isHostRef.current) handleActionAsHost({ action: 'timeout', playerId, loser })
      else sendToHost({ type: 'ACTION', payload: { action: 'timeout', playerId, loser } })
-  }, [handleActionAsHost, isHost, playerId, sendToHost])
+  }, [handleActionAsHost, playerId, sendToHost])
 
   return {
     error,

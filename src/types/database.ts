@@ -228,7 +228,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      update_player_elo_rating: {
+        Args: {
+          player_id: string
+          opponent_elo: number
+          outcome: string
+        }
+        Returns: void
+      }
     }
     Enums: {
       [_ in never]: never
@@ -240,6 +247,8 @@ export type Database = {
 }
 
 export type Game = Database['public']['Tables']['games']['Row']
+// Note: white_player_id and black_player_id are transient P2P session IDs.
+// white_id and black_id are persistent Supabase Profile IDs.
 export type GameState = Database['public']['Tables']['game_states']['Row']
 export type Move = Database['public']['Tables']['moves']['Row']
 export type Profile = Database['public']['Tables']['profiles']['Row']

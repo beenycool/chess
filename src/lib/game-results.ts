@@ -1,17 +1,5 @@
-import { supabase } from '@/lib/supabase'
-
-export function calculateElo(winnerElo: number, loserElo: number, isDraw: boolean = false) {
-  const K = 32
-  const expectedScoreWinner = 1 / (1 + Math.pow(10, (loserElo - winnerElo) / 400))
-
-  const actualScoreWinner = isDraw ? 0.5 : 1
-  const actualScoreLoser = isDraw ? 0.5 : 0
-
-  const newWinnerElo = Math.round(winnerElo + K * (actualScoreWinner - expectedScoreWinner))
-  const newLoserElo = Math.round(loserElo + K * (actualScoreLoser - (1 - expectedScoreWinner)))
-
-  return { newWinnerElo, newLoserElo }
-}
+import { createBrowserSupabase } from '@/lib/supabase'
+import { Database } from '@/types/database'
 
 export async function recordGameResult(params: {
   gameId: string
@@ -21,7 +9,8 @@ export async function recordGameResult(params: {
   reason: string
   pgn: string
 }) {
-  const { gameId, whiteId, blackId, result, reason } = params
+  const { gameId, whiteId, blackId, result, reason, pgn } = params
+  const supabase = createBrowserSupabase()
 
   // 1. Update the games table
   const { error: gameError } = await supabase
@@ -41,11 +30,22 @@ export async function recordGameResult(params: {
     return
   }
 
-  // 2. If both players are registered, update their Elo and stats
+  // Persist PGN
+  const { error: pgnError } = await supabase
+    .from('game_states')
+    .update({ pgn: pgn || '' })
+    .eq('game_id', gameId)
+
+  if (pgnError) {
+     console.error('Error recording game PGN:', pgnError)
+  }
+
+  // 2. If both players are registered, update their Elo and stats using atomic RPC
   if (whiteId && blackId) {
+    // Fetch profiles first to get current Elos
     const { data: profiles, error: profileError } = await supabase
       .from('profiles')
-      .select('id, elo, wins, losses, draws')
+      .select('id, elo')
       .in('id', [whiteId, blackId])
 
     if (profileError || !profiles || profiles.length < 2) {
@@ -56,40 +56,30 @@ export async function recordGameResult(params: {
     const whiteProfile = profiles.find(p => p.id === whiteId)!
     const blackProfile = profiles.find(p => p.id === blackId)!
 
-    let newWhiteElo, newBlackElo
-    let whiteWin = 0, whiteLoss = 0, whiteDraw = 0
-    let blackWin = 0, blackLoss = 0, blackDraw = 0
+    // Determine outcomes
+    const whiteOutcome = result === 'white' ? 'win' : result === 'black' ? 'loss' : 'draw'
+    const blackOutcome = result === 'black' ? 'win' : result === 'white' ? 'loss' : 'draw'
 
-    if (result === 'white') {
-      const elo = calculateElo(whiteProfile.elo, blackProfile.elo, false)
-      newWhiteElo = elo.newWinnerElo
-      newBlackElo = elo.newLoserElo
-      whiteWin = 1; blackLoss = 1
-    } else if (result === 'black') {
-      const elo = calculateElo(blackProfile.elo, whiteProfile.elo, false)
-      newBlackElo = elo.newWinnerElo
-      newWhiteElo = elo.newLoserElo
-      blackWin = 1; whiteLoss = 1
-    } else {
-      const elo = calculateElo(whiteProfile.elo, blackProfile.elo, true)
-      newWhiteElo = elo.newWinnerElo
-      newBlackElo = elo.newLoserElo
-      whiteDraw = 1; blackDraw = 1
+    // Call RPC for white
+    const { error: errorWhite } = await supabase.rpc('update_player_elo_rating', {
+      player_id: whiteId,
+      opponent_elo: blackProfile.elo,
+      outcome: whiteOutcome
+    })
+
+    if (errorWhite) {
+      console.error('Error updating white player stats:', errorWhite)
     }
 
-    // Update profiles
-    await supabase.from('profiles').update({
-      elo: newWhiteElo,
-      wins: whiteProfile.wins + whiteWin,
-      losses: whiteProfile.losses + whiteLoss,
-      draws: whiteProfile.draws + whiteDraw,
-    }).eq('id', whiteId)
+    // Call RPC for black
+    const { error: errorBlack } = await supabase.rpc('update_player_elo_rating', {
+      player_id: blackId,
+      opponent_elo: whiteProfile.elo,
+      outcome: blackOutcome
+    })
 
-    await supabase.from('profiles').update({
-      elo: newBlackElo,
-      wins: blackProfile.wins + blackWin,
-      losses: blackProfile.losses + blackLoss,
-      draws: blackProfile.draws + blackDraw,
-    }).eq('id', blackId)
+    if (errorBlack) {
+      console.error('Error updating black player stats:', errorBlack)
+    }
   }
 }

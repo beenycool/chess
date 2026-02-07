@@ -2,7 +2,7 @@
 
 import { Game } from "@/types/database"
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { nanoid } from 'nanoid'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -15,20 +15,39 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { useAuth } from '@/hooks/use-auth'
-import { supabase } from '@/lib/supabase'
+import { createBrowserSupabase } from '@/lib/supabase'
 import { Badge } from '@/components/ui/badge'
 import { Play, Plus, Users, Globe } from 'lucide-react'
 import { TIME_CONTROLS } from '@/lib/constants'
 
+// Define a concrete type for games with player info
+type GameWithPlayers = Game & {
+  white: { username: string; elo: number } | null
+  black: { username: string; elo: number } | null
+}
+
 export default function Home() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, profile } = useAuth()
   const [timeControl, setTimeControl] = useState('10+0')
   const [color, setColor] = useState('random')
-  const [activeGames, setActiveGames] = useState<Game[]>([])
+  const [activeGames, setActiveGames] = useState<GameWithPlayers[]>([])
   const [loading, setLoading] = useState(true)
+  const [lobbyError, setLobbyError] = useState<string | null>(null)
+  const supabase = createBrowserSupabase()
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Initialize options from URL if present
+  useEffect(() => {
+    const tc = searchParams.get('timeControl')
+    const c = searchParams.get('color')
+    if (tc && TIME_CONTROLS.some(t => t.name === tc)) setTimeControl(tc)
+    if (c && ['white', 'black', 'random'].includes(c)) setColor(c)
+  }, [searchParams])
 
   const fetchActiveGames = useCallback(async () => {
+    setLobbyError(null)
     const { data, error } = await supabase
       .from('games')
       .select(`
@@ -39,38 +58,73 @@ export default function Home() {
       .eq('status', 'waiting')
       .limit(10)
 
-    if (!error && data) {
-      setActiveGames(data as any)
+    if (error) {
+        console.error('Error fetching active games:', error)
+        setLobbyError('Failed to load active games')
+    } else if (data) {
+        // Cast to our defined type
+        setActiveGames(data as unknown as GameWithPlayers[])
     }
     setLoading(false)
-  }, [])
+  }, [supabase])
 
   useEffect(() => {
+<<<<<<< HEAD
     fetchActiveGames()
+=======
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchActiveGames()
+    // Set up real-time subscription for active games, filtered by status=waiting
+>>>>>>> bcba45a (Merge PR #8: Refactor chess app for stability and type safety)
     const channel = supabase
       .channel('public:games')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
-        fetchActiveGames()
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'games',
+        filter: 'status=eq.waiting'
+      }, () => {
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchActiveGames()
       })
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchActiveGames])
+  }, [fetchActiveGames, supabase])
 
   const handleCreateGame = () => {
     const gameId = nanoid(10)
+<<<<<<< HEAD
     sessionStorage.setItem(`game-options:${gameId}`, JSON.stringify({
       timeControl,
       color
     }))
     router.push(`/game/${gameId}`)
+=======
+    // Encode options in URL
+    const params = new URLSearchParams()
+    params.set('timeControl', timeControl)
+    params.set('color', color)
+
+    // Also save to session storage as fallback
+    if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`game-options:${gameId}`, JSON.stringify({
+            timeControl,
+            color
+        }))
+    }
+
+    router.push(`/game/${gameId}?${params.toString()}`)
+>>>>>>> bcba45a (Merge PR #8: Refactor chess app for stability and type safety)
   }
 
   const handleJoinGame = (gameId: string) => {
     router.push(`/game/${gameId}`)
   }
+
+  const initial = profile?.username?.[0] ? profile.username[0].toUpperCase() : 'U'
 
   return (
     <main className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
@@ -96,9 +150,9 @@ export default function Home() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Time Control</label>
+                <label htmlFor="time-control-select" className="text-sm font-medium">Time Control</label>
                 <Select value={timeControl} onValueChange={setTimeControl}>
-                  <SelectTrigger>
+                  <SelectTrigger id="time-control-select">
                     <SelectValue placeholder="Select time control" />
                   </SelectTrigger>
                   <SelectContent>
@@ -112,9 +166,9 @@ export default function Home() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Your Color</label>
+                <label htmlFor="color-select" className="text-sm font-medium">Your Color</label>
                 <Select value={color} onValueChange={setColor}>
-                  <SelectTrigger>
+                  <SelectTrigger id="color-select">
                     <SelectValue placeholder="Select color" />
                   </SelectTrigger>
                   <SelectContent>
@@ -157,6 +211,12 @@ export default function Home() {
                   <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
                 ))}
               </div>
+            ) : lobbyError ? (
+                <div className="text-center py-12 space-y-2">
+                    <p className="text-red-500">{lobbyError}</p>
+                    <Button variant="link" onClick={() => // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchActiveGames()}>Retry</Button>
+                </div>
             ) : activeGames.length === 0 ? (
               <div className="text-center py-12 space-y-4 border-2 border-dashed rounded-xl">
                 <Users className="w-12 h-12 text-muted-foreground mx-auto" />
@@ -172,14 +232,14 @@ export default function Home() {
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="font-bold">
-                          {(game as any).white?.username || (game as any).black?.username || 'Guest'}&apos;s Game
+                          {game.white?.username || game.black?.username || 'Guest'}&apos;s Game
                         </span>
                         <Badge variant="secondary" className="text-[10px] px-1 h-4">
                           {game.time_control}
                         </Badge>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        Hosted by {(game as any).white?.username || (game as any).black?.username || 'Anonymous'}
+                        Hosted by {game.white?.username || game.black?.username || 'Anonymous'}
                       </span>
                     </div>
                     <Button
@@ -203,7 +263,7 @@ export default function Home() {
           <CardContent className="py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">
-                {profile.username[0].toUpperCase()}
+                {initial}
               </div>
               <div>
                 <h3 className="font-bold text-lg">{profile.username}</h3>

@@ -15,10 +15,16 @@ export function ChessClock({ color, onTimeout }: ChessClockProps) {
   const [displayTime, setDisplayTime] = useState(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const hasCalledTimeout = useRef(false)
+  const onTimeoutRef = useRef(onTimeout)
 
   const initialTime = color === 'white' ? gameState?.white_time_ms : gameState?.black_time_ms
   const isMyTurn = gameState?.turn === (color === 'white' ? 'w' : 'b')
   const isGameActive = game?.status === 'active'
+
+  // Update ref when prop changes
+  useEffect(() => {
+    onTimeoutRef.current = onTimeout
+  }, [onTimeout])
 
   useEffect(() => {
     if (!gameState || !isGameActive || !isMyTurn) {
@@ -36,7 +42,7 @@ export function ChessClock({ color, onTimeout }: ChessClockProps) {
 
       if (remaining === 0 && !hasCalledTimeout.current) {
         hasCalledTimeout.current = true
-        onTimeout?.()
+        onTimeoutRef.current?.()
       }
     }
 
@@ -48,7 +54,7 @@ export function ChessClock({ color, onTimeout }: ChessClockProps) {
         clearInterval(intervalRef.current)
       }
     }
-  }, [gameState, initialTime, isMyTurn, isGameActive, onTimeout])
+  }, [gameState, initialTime, isMyTurn, isGameActive]) // Removed onTimeout
 
   useEffect(() => {
     hasCalledTimeout.current = false

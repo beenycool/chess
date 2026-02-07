@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState, useEffect } from 'react'
+import { createBrowserSupabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -20,6 +20,18 @@ export function AuthModal() {
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
+  const supabase = createBrowserSupabase()
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setEmail('')
+      setPassword('')
+      setUsername('')
+      setIsSignUp(false)
+      setLoading(false)
+    }
+  }, [isOpen])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,8 +60,12 @@ export function AuthModal() {
         toast.success('Logged in successfully!')
         setIsOpen(false)
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Authentication failed')
+    } catch (error: unknown) {
+      let message = 'Authentication failed'
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+        message = (error as any).message
+      }
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -67,8 +83,9 @@ export function AuthModal() {
         <form onSubmit={handleAuth} className="space-y-4 py-4">
           {isSignUp && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">Username</label>
+              <label htmlFor="auth-username" className="text-sm font-medium">Username</label>
               <Input
+                id="auth-username"
                 placeholder="ChessMaster"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -77,8 +94,9 @@ export function AuthModal() {
             </div>
           )}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
+            <label htmlFor="auth-email" className="text-sm font-medium">Email</label>
             <Input
+              id="auth-email"
               type="email"
               placeholder="email@example.com"
               value={email}
@@ -87,8 +105,9 @@ export function AuthModal() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Password</label>
+            <label htmlFor="auth-password" className="text-sm font-medium">Password</label>
             <Input
+              id="auth-password"
               type="password"
               placeholder="••••••••"
               value={password}
