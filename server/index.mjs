@@ -10,13 +10,13 @@ const __dirname = path.dirname(__filename)
 
 const MAX_PORT = 65535
 const DEFAULT_MAX_BODY_BYTES = 1024 * 1024
-const parsedPort = Number.parseInt(process.env.PORT || '', 10)
+const parsedPort = Number.parseInt(process.env.PORT || '4000', 10)
 const PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= MAX_PORT ? parsedPort : 4000
 const DATA_PATH = process.env.DATA_PATH || path.join(__dirname, 'data', 'players.json')
 const PASSWORD_ITERATIONS = 600_000
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/
 const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || '*'
-const parsedBodyLimit = Number.parseInt(process.env.MAX_BODY_BYTES || '', 10)
+const parsedBodyLimit = Number.parseInt(process.env.MAX_BODY_BYTES || String(DEFAULT_MAX_BODY_BYTES), 10)
 const MAX_BODY_BYTES = Number.isInteger(parsedBodyLimit) && parsedBodyLimit > 0 ? parsedBodyLimit : DEFAULT_MAX_BODY_BYTES
 
 const ensureDataDir = () => {

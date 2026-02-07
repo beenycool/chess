@@ -251,17 +251,17 @@ const fetchBackend = async <T>(path: string, options?: RequestInit): Promise<T |
       ...options,
     })
     if (!response.ok) {
-      console.warn('Backend request failed', response.status, response.statusText)
+      console.warn('Backend request failed', path, response.status, response.statusText)
       return null
     }
     try {
       return (await response.json()) as T
     } catch {
-      console.warn('Backend response was not valid JSON')
+      console.warn('Backend response was not valid JSON', path)
       return null
     }
-  } catch {
-    console.warn('Backend request error')
+  } catch (error) {
+    console.warn('Backend request error', path, error)
     return null
   }
 }
