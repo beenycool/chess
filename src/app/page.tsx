@@ -1,5 +1,6 @@
-import { Game } from "@/types/database"
 'use client'
+
+import { Game, Profile } from "@/types/database"
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -25,7 +26,10 @@ export default function Home() {
   const { user, profile } = useAuth()
   const [timeControl, setTimeControl] = useState('10+0')
   const [color, setColor] = useState('random')
-  const [activeGames, setActiveGames] = useState<Game[]>([])
+  const [activeGames, setActiveGames] = useState<(Game & {
+    white?: Partial<Profile> | null
+    black?: Partial<Profile> | null
+  })[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchActiveGames = useCallback(async () => {
@@ -33,8 +37,8 @@ export default function Home() {
       .from('games')
       .select(`
         *,
-        white:white_id(username, elo),
-        black:black_id(username, elo)
+        white:profiles!games_white_id_fkey(username, elo),
+        black:profiles!games_black_id_fkey(username, elo)
       `)
       .eq('status', 'waiting')
       .limit(10)
@@ -110,7 +114,7 @@ export default function Home() {
                   <SelectContent>
                     {TIME_CONTROLS.map((tc) => (
                       <SelectItem key={tc.name} value={tc.name}>
-                        {tc.name} ({tc.description})
+                        {tc.name} ({tc.label})
                       </SelectItem>
                     ))}
                   </SelectContent>

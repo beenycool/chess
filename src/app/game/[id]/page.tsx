@@ -75,14 +75,14 @@ export default function GamePage() {
   const handleJoinAsWhite = useCallback(async () => {
     const result = await joinGame('white')
     if (!result.success) {
-      toast.error(result.error || 'Failed to join as White')
+      toast.error('Failed to join as White')
     }
   }, [joinGame])
 
   const handleJoinAsBlack = useCallback(async () => {
     const result = await joinGame('black')
     if (!result.success) {
-      toast.error(result.error || 'Failed to join as Black')
+      toast.error('Failed to join as Black')
     }
   }, [joinGame])
 

@@ -48,8 +48,8 @@ export function AuthModal() {
         toast.success('Logged in successfully!')
         setIsOpen(false)
       }
-    } catch (error: Error) {
-      toast.error(error.message || 'Authentication failed')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Authentication failed')
     } finally {
       setLoading(false)
     }

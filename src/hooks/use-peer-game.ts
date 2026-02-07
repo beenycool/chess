@@ -174,8 +174,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         const result = tryJoinGame(game, msg.payload.playerId, msg.payload.color)
         if (result.success && result.game) {
           const updatedGame = { ...result.game }
-          if (msg.payload.color === 'white') updatedGame.white_id = msg.payload.profileId
-          else updatedGame.black_id = msg.payload.profileId
+          if (msg.payload.color === 'white') updatedGame.white_id = msg.payload.profileId ?? null
+          else updatedGame.black_id = msg.payload.profileId ?? null
 
           setGame(updatedGame)
           broadcast({
@@ -266,8 +266,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
             hostPlayerId: playerId
           })
 
-          if (newGame.white_player_id === playerId) newGame.white_id = profile?.id
-          if (newGame.black_player_id === playerId) newGame.black_id = profile?.id
+          if (newGame.white_player_id === playerId) newGame.white_id = profile?.id ?? null
+          if (newGame.black_player_id === playerId) newGame.black_id = profile?.id ?? null
 
           setGame(newGame)
           setGameState(newGameState)
@@ -328,8 +328,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         const result = tryJoinGame(game, playerId, color)
         if (result.success && result.game) {
             const updatedGame = { ...result.game }
-            if (color === 'white') updatedGame.white_id = profile?.id
-            else updatedGame.black_id = profile?.id
+            if (color === 'white') updatedGame.white_id = profile?.id ?? null
+            else updatedGame.black_id = profile?.id ?? null
 
             setGame(updatedGame)
             if (result.color) setPlayerColor(result.color)

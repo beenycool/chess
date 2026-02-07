@@ -36,6 +36,8 @@ export function createInitialGame(gameId: string, options: GameOptions): { game:
     time_control: timeControl.name,
     initial_time_ms: timeControl.initialTimeMs,
     increment_ms: timeControl.incrementMs,
+    white_id: null,
+    black_id: null,
     white_player_id: whitePlayerId,
     black_player_id: blackPlayerId,
     result: null,

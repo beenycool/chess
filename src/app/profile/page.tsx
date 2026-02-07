@@ -1,5 +1,6 @@
-import { Game } from "@/types/database"
 'use client'
+
+import { Game, Profile } from "@/types/database"
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/use-auth'
@@ -9,10 +10,14 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { History, TrendingUp, User as UserIcon } from 'lucide-react'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 export default function ProfilePage() {
   const { user, profile, loading: authLoading } = useAuth()
-  const [games, setGames] = useState<Game[]>([])
+  const [games, setGames] = useState<(Game & {
+    white?: Partial<Profile> | null
+    black?: Partial<Profile> | null
+  })[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchGameHistory = useCallback(async () => {
@@ -21,8 +26,8 @@ export default function ProfilePage() {
       .from('games')
       .select(`
         *,
-        white:white_id(username, elo),
-        black:black_id(username, elo)
+        white:profiles!games_white_id_fkey(username, elo),
+        black:profiles!games_black_id_fkey(username, elo)
       `)
       .or(`white_id.eq.${user.id},black_id.eq.${user.id}`)
       .order('created_at', { ascending: false })
@@ -166,5 +171,3 @@ export default function ProfilePage() {
     </div>
   )
 }
-
-import { Button } from '@/components/ui/button'
