@@ -20,6 +20,23 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Backend (Render)
+
+There is a lightweight Node backend in `server/index.mjs` that stores leaderboard stats on disk so you can host it on Render.
+
+```bash
+node server/index.mjs
+```
+
+Environment variables:
+- `PORT` (default `4000`)
+- `DATA_PATH` (default `server/data/players.json`, set this to a Render disk like `/data/players.json`)
+- `CORS_ORIGIN` (default `*`)
+- `MAX_BODY_BYTES` (default `1048576`)
+
+Once deployed, point the frontend to your backend by setting `NEXT_PUBLIC_BACKEND_URL` to the Render service URL.
+In production, set `CORS_ORIGIN` to your frontend origin.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
