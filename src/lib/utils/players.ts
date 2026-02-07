@@ -35,6 +35,8 @@ const defaultStats = (): PlayerStats => ({
 const isBrowser = () => typeof window !== 'undefined'
 
 const normalizeUsername = (username: string) => username.trim().toLowerCase()
+const sanitizeUsername = (username: string) => username.replace(/[^a-z0-9_-]/g, '')
+const getUsernameKey = (username: string) => sanitizeUsername(normalizeUsername(username))
 
 const notifyPlayers = () => {
   if (!isBrowser()) return
@@ -43,7 +45,7 @@ const notifyPlayers = () => {
 
 const normalizeStoredPlayer = (player: StoredPlayer): StoredPlayer => ({
   ...player,
-  username: normalizeUsername(player.username ?? ''),
+  username: getUsernameKey(player.username ?? ''),
   password: player.password ?? '',
   salt: player.salt ?? '',
   stats: {
@@ -59,7 +61,7 @@ const toPublicProfile = (player: StoredPlayer): PlayerProfile => ({
   stats: player.stats,
 })
 
-const PASSWORD_ITERATIONS = 600_000
+const PASSWORD_ITERATIONS = 1_000_000
 
 const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes)
@@ -160,8 +162,8 @@ export const getCurrentPlayer = (): PlayerProfile | null => {
   const username = localStorage.getItem(CURRENT_PLAYER_KEY)
   if (!username) return null
   getStoredPlayerData()
-  const normalizedUsername = normalizeUsername(username)
-  return cachedPublicPlayers.find((player) => normalizeUsername(player.username) === normalizedUsername) ?? null
+  const usernameKey = getUsernameKey(username)
+  return cachedPublicPlayers.find((player) => getUsernameKey(player.username) === usernameKey) ?? null
 }
 
 export const signInPlayer = async (
@@ -169,12 +171,16 @@ export const signInPlayer = async (
   password: string
 ): Promise<{ success: boolean; error?: string; player?: PlayerProfile }> => {
   const normalizedUsername = normalizeUsername(username)
-  if (!normalizedUsername) return { success: false, error: 'Username is required.' }
+  const sanitizedUsername = sanitizeUsername(normalizedUsername)
+  if (!sanitizedUsername) return { success: false, error: 'Username is required.' }
+  if (sanitizedUsername !== normalizedUsername) {
+    return { success: false, error: 'Use only letters, numbers, dashes, and underscores.' }
+  }
   if (!password) return { success: false, error: 'Password is required.' }
 
   const players = getStoredPlayerData()
   const existingIndex = players.findIndex(
-    (player) => normalizeUsername(player.username) === normalizedUsername
+    (player) => getUsernameKey(player.username) === sanitizedUsername
   )
 
   if (existingIndex >= 0) {
@@ -188,12 +194,12 @@ export const signInPlayer = async (
       }
       const updatedPlayer: StoredPlayer = {
         ...existing,
-        username: normalizedUsername,
+        username: sanitizedUsername,
       }
       const updatedPlayers = [...players]
       updatedPlayers[existingIndex] = updatedPlayer
       savePlayers(updatedPlayers)
-      localStorage.setItem(CURRENT_PLAYER_KEY, normalizedUsername)
+      localStorage.setItem(CURRENT_PLAYER_KEY, sanitizedUsername)
       notifyPlayers()
       return { success: true, player: toPublicProfile(updatedPlayer) }
     }
@@ -215,14 +221,14 @@ export const signInPlayer = async (
 
     const updatedPlayer: StoredPlayer = {
       ...existing,
-      username: normalizedUsername,
+      username: sanitizedUsername,
       password: saltedHash,
       salt: newSalt,
     }
     const updatedPlayers = [...players]
     updatedPlayers[existingIndex] = updatedPlayer
     savePlayers(updatedPlayers)
-    localStorage.setItem(CURRENT_PLAYER_KEY, normalizedUsername)
+    localStorage.setItem(CURRENT_PLAYER_KEY, sanitizedUsername)
     notifyPlayers()
     return { success: true, player: toPublicProfile(updatedPlayer) }
   }
@@ -233,7 +239,7 @@ export const signInPlayer = async (
   if (!saltedHash) return { success: false, error: 'Unable to secure password.' }
 
   const newPlayer: StoredPlayer = {
-    username: normalizedUsername,
+    username: sanitizedUsername,
     password: saltedHash,
     salt: newSalt,
     stats: defaultStats(),
@@ -257,10 +263,10 @@ export const updatePlayerStats = (
   result: 'win' | 'loss' | 'draw'
 ): PlayerProfile | null => {
   if (!isBrowser()) return null
-  const normalizedUsername = normalizeUsername(username)
+  const usernameKey = getUsernameKey(username)
   const players = getStoredPlayerData()
   const index = players.findIndex(
-    (player) => normalizeUsername(player.username) === normalizedUsername
+    (player) => getUsernameKey(player.username) === usernameKey
   )
   if (index < 0) return null
 
