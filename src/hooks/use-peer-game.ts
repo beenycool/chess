@@ -17,7 +17,7 @@ type Message =
   | { type: 'SYNC_GAME', payload: { game: Game, gameState: GameState, moves: Move[] } }
   | { type: 'JOIN_REQUEST', payload: { playerId: string, color: 'white' | 'black', profileId?: string } }
   | { type: 'MAKE_MOVE', payload: { from: string, to: string, promotion?: string } }
-  | { type: 'ACTION', payload: { action: 'resign' | 'offer_draw' | 'accept_draw' | 'timeout', playerId: string, loser?: 'white' | 'black' } }
+  | { type: 'ACTION', payload: { action: string, playerId: string, loser?: 'white' | 'black' } }
   | { type: 'ERROR', payload: string }
 
 export function usePeerGame(gameId: string, initialOptions?: { timeControl?: string, color?: string }) {
@@ -161,7 +161,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     }
   }, [broadcast, setGame, handleGameCompletion, publishGameToSupabase])
 
-  const isValidMessage = (data: any): data is Message => {
+  const isValidMessage = (data: unknown): data is Message => {
     return !!data && typeof (data as any).type === 'string'
   }
 
@@ -174,8 +174,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         const result = tryJoinGame(game, msg.payload.playerId, msg.payload.color)
         if (result.success && result.game) {
           const updatedGame = { ...result.game }
-          if (msg.payload.color === 'white') updatedGame.white_id = msg.payload.profileId
-          else updatedGame.black_id = msg.payload.profileId
+          if (msg.payload.color === 'white') updatedGame.white_id = msg.payload.profileId || null
+          else updatedGame.black_id = msg.payload.profileId || null
 
           setGame(updatedGame)
           broadcast({
@@ -266,8 +266,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
             hostPlayerId: playerId
           })
 
-          if (newGame.white_player_id === playerId) newGame.white_id = profile?.id
-          if (newGame.black_player_id === playerId) newGame.black_id = profile?.id
+          if (newGame.white_player_id === playerId) newGame.white_id = profile?.id || null
+          if (newGame.black_player_id === playerId) newGame.black_id = profile?.id || null
 
           setGame(newGame)
           setGameState(newGameState)
@@ -321,15 +321,15 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
 
   // --- Public Interface ---
 
-  const joinGame = useCallback(async (color: 'white' | 'black') => {
+  const joinGame = useCallback(async (color: 'white' | 'black'): Promise<{ success: boolean, error?: string }> => {
     if (isHost) {
         const { game } = gameStateRef.current
-        if (!game) return { success: false }
+        if (!game) return { success: false, error: 'Game not found' }
         const result = tryJoinGame(game, playerId, color)
         if (result.success && result.game) {
             const updatedGame = { ...result.game }
-            if (color === 'white') updatedGame.white_id = profile?.id
-            else updatedGame.black_id = profile?.id
+            if (color === 'white') updatedGame.white_id = profile?.id || null
+            else updatedGame.black_id = profile?.id || null
 
             setGame(updatedGame)
             if (result.color) setPlayerColor(result.color)
@@ -340,7 +340,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
             await publishGameToSupabase(updatedGame)
             return { success: true }
         }
-        return { success: false }
+        return { success: false, error: 'Failed to join game' }
     } else {
         sendToHost({
             type: 'JOIN_REQUEST',
@@ -350,10 +350,10 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     }
   }, [isHost, playerId, profile, sendToHost, broadcast, setGame, setPlayerColor, publishGameToSupabase])
 
-  const makeMove = useCallback(async (from: string, to: string, promotion?: string) => {
+  const makeMove = useCallback(async (from: string, to: string, promotion?: string): Promise<{ success: boolean, error?: string }> => {
     if (isHost) {
         const { game, gameState, moves } = gameStateRef.current
-        if (!game || !gameState) return { success: false }
+        if (!game || !gameState) return { success: false, error: 'Game not found' }
         const result = processMove(game, gameState, { from, to, promotion })
         if (result.success && result.newGameState && result.newMove) {
             const updatedMoves = [...moves, result.newMove]
@@ -372,7 +372,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
             }
             return { success: true }
         }
-        return { success: false, error: result.error }
+        return { success: false, error: result.error || 'Invalid move' }
     } else {
         sendToHost({ type: 'MAKE_MOVE', payload: { from, to, promotion } })
         return { success: true }
