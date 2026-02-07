@@ -51,7 +51,12 @@ const saveData = (data) => {
 const normalizeUsername = (username) => username.trim().toLowerCase()
 
 const hashPassword = (password, salt) =>
-  crypto.pbkdf2Sync(password, Buffer.from(salt, 'hex'), PASSWORD_ITERATIONS, 32, 'sha256').toString('hex')
+  new Promise((resolve, reject) => {
+    crypto.pbkdf2(password, Buffer.from(salt, 'hex'), PASSWORD_ITERATIONS, 32, 'sha256', (err, derivedKey) => {
+      if (err) return reject(err)
+      return resolve(derivedKey.toString('hex'))
+    })
+  })
 
 const createSalt = () => crypto.randomBytes(16).toString('hex')
 
@@ -68,14 +73,18 @@ const jsonResponse = (res, statusCode, payload) => {
 const readBody = (req) =>
   new Promise((resolve, reject) => {
     let body = ''
+    let aborted = false
     req.on('data', (chunk) => {
+      if (aborted) return
       body += chunk
       if (body.length > MAX_BODY_BYTES) {
-        reject(new Error('BODY_TOO_LARGE'))
+        aborted = true
         req.destroy()
+        reject(new Error('BODY_TOO_LARGE'))
       }
     })
     req.on('end', () => {
+      if (aborted) return
       if (!body) return resolve({})
       try {
         resolve(JSON.parse(body))
@@ -131,7 +140,7 @@ const server = http.createServer(async (req, res) => {
       const data = loadData()
       const existing = data.players[username]
       if (existing) {
-        const hashed = hashPassword(password, existing.salt)
+        const hashed = await hashPassword(password, existing.salt)
         if (hashed !== existing.passwordHash) {
           jsonResponse(res, 401, { error: 'Incorrect password.' })
           return
@@ -141,7 +150,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const salt = createSalt()
-      const passwordHash = hashPassword(password, salt)
+      const passwordHash = await hashPassword(password, salt)
       const player = {
         username,
         salt,

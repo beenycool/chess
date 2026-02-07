@@ -292,7 +292,10 @@ export const getCurrentPlayer = (): PlayerProfile | null => {
 
 export const syncPlayersFromBackend = async () => {
   const data = await fetchBackend<{ players?: PlayerProfile[] }>('/players')
-  if (!data?.players) return
+  if (!data?.players) {
+    console.warn('Backend sync failed', '/players')
+    return
+  }
   mergeRemotePlayers(data.players)
   const currentUsername = localStorage.getItem(CURRENT_PLAYER_KEY)
   if (currentUsername) {
@@ -442,11 +445,17 @@ export const updatePlayerStats = (
     void fetchBackend<{ player?: PlayerProfile }>(`/players/${usernameKey}/result`, {
       method: 'POST',
       body: JSON.stringify({ result }),
-    }).then((data) => {
-      if (data?.player) {
-        mergeRemotePlayers([data.player])
-      }
     })
+      .then((data) => {
+        if (data?.player) {
+          mergeRemotePlayers([data.player])
+        } else {
+          console.warn('Backend stats update failed', `/players/${usernameKey}/result`)
+        }
+      })
+      .catch((error) => {
+        console.warn('Backend stats update error', error)
+      })
   }
   return toPublicProfile(updatedPlayer)
 }
