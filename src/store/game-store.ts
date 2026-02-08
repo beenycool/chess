@@ -5,17 +5,21 @@ import type { PlayerColor } from '@/lib/constants'
 
 export interface ChatMessage {
   id: string
-  sender: string
+  senderId: string
+  senderName: string
   text: string
   timestamp: number
   isSystem?: boolean
 }
+
+const MAX_CHAT_MESSAGES = 200
 
 interface GameStore {
   // Game data
   game: Game | null
   gameState: GameState | null
   moves: Move[]
+  chatMessages: ChatMessage[]
   
   // Local state
   chess: Chess
@@ -29,13 +33,14 @@ interface GameStore {
   selectedSquare: string | null
   lastMoveSquares: { from: string; to: string } | null
   pendingDrawOffer: 'sent' | 'received' | null
-  chatMessages: ChatMessage[]
   
   // Actions
   setGame: (game: Game | null) => void
   setGameState: (gameState: GameState | null) => void
   setMoves: (moves: Move[]) => void
   addMove: (move: Move) => void
+  setChatMessages: (messages: ChatMessage[]) => void
+  addChatMessage: (message: ChatMessage) => void
   setPlayerId: (id: string) => void
   setPlayerColor: (color: PlayerColor) => void
   setBoardOrientation: (orientation: 'white' | 'black') => void
@@ -43,7 +48,6 @@ interface GameStore {
   setSelectedSquare: (square: string | null) => void
   setLastMoveSquares: (squares: { from: string; to: string } | null) => void
   setPendingDrawOffer: (offer: 'sent' | 'received' | null) => void
-  addChatMessage: (message: ChatMessage) => void
   
   // Computed
   updateChessFromFen: (fen: string) => void
@@ -55,6 +59,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   game: null,
   gameState: null,
   moves: [],
+  chatMessages: [],
   
   // Local state
   chess: new Chess(),
@@ -68,7 +73,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedSquare: null,
   lastMoveSquares: null,
   pendingDrawOffer: null,
-  chatMessages: [],
   
   // Actions
   setGame: (game) => set({ game }),
@@ -94,6 +98,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setMoves: (moves) => set({ moves }),
   
   addMove: (move) => set((state) => ({ moves: [...state.moves, move] })),
+
+  setChatMessages: (messages) => set({ chatMessages: messages.slice(-MAX_CHAT_MESSAGES) }),
+
+  addChatMessage: (message) =>
+    set((state) => ({ chatMessages: [...state.chatMessages, message].slice(-MAX_CHAT_MESSAGES) })),
   
   setPlayerId: (id) => set({ playerId: id }),
   
@@ -116,8 +125,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setLastMoveSquares: (squares) => set({ lastMoveSquares: squares }),
   
   setPendingDrawOffer: (offer) => set({ pendingDrawOffer: offer }),
-
-  addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
   
   updateChessFromFen: (fen) => {
     const chess = new Chess(fen)
@@ -128,6 +135,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     game: null,
     gameState: null,
     moves: [],
+    chatMessages: [],
     chess: new Chess(),
     playerColor: null,
     boardOrientation: 'white',
@@ -135,6 +143,5 @@ export const useGameStore = create<GameStore>((set, get) => ({
     selectedSquare: null,
     lastMoveSquares: null,
     pendingDrawOffer: null,
-  chatMessages: [],
   }),
 }))

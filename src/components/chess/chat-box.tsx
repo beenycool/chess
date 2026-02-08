@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useGameStore } from '@/store/game-store'
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Send } from 'lucide-react'
 
 interface ChatBoxProps {
   onSendMessage: (text: string) => void
@@ -14,8 +15,8 @@ export function ChatBox({ onSendMessage }: ChatBoxProps) {
   const { chatMessages, playerId } = useGameStore()
   const [inputText, setInputText] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const MAX_MESSAGE_LENGTH = 500
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -24,63 +25,64 @@ export function ChatBox({ onSendMessage }: ChatBoxProps) {
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputText.trim()) return
-
-    onSendMessage(inputText)
+    const trimmed = inputText.trim()
+    if (!trimmed || trimmed.length > MAX_MESSAGE_LENGTH) return
+    onSendMessage(trimmed)
     setInputText('')
   }
 
   return (
-    <Card className="flex flex-col h-full">
-      <CardHeader className="py-3 px-4 border-b">
+    <Card className="flex flex-col h-[300px]">
+      <CardHeader className="py-2 px-4 border-b">
         <CardTitle className="text-sm font-medium">Chat</CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col p-3 gap-2 min-h-[200px]">
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto space-y-3 pr-2"
-        >
-          {chatMessages.length === 0 ? (
-             <div className="text-xs text-muted-foreground text-center py-4">
-               No messages yet. Say hi!
-             </div>
-          ) : (
-            chatMessages.map((msg) => {
-              const isMe = msg.sender === playerId
-              return (
+      <CardContent className="flex-1 overflow-y-auto p-4 space-y-3" ref={scrollRef}>
+        {chatMessages.length === 0 ? (
+          <div className="text-center text-xs text-muted-foreground mt-4">
+            No messages yet. Say hi!
+          </div>
+        ) : (
+          chatMessages.map((msg) => {
+            const isMe = msg.senderId === playerId
+            return (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+              >
                 <div
-                  key={msg.id}
-                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                    isMe
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted'
+                  }`}
                 >
-                  <div
-                    className={`max-w-[85%] rounded-lg px-3 py-1.5 text-sm ${
-                      isMe
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
-                    }`}
-                  >
-                    {msg.text}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground mt-1 px-1">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                  {!isMe && (
+                    <div className="text-[10px] opacity-70 font-semibold mb-1">
+                      {msg.senderName}
+                    </div>
+                  )}
+                  {msg.text}
                 </div>
-              )
-            })
-          )}
-        </div>
-        <form onSubmit={handleSend} className="flex gap-2 pt-2 border-t">
+              </div>
+            )
+          })
+        )}
+      </CardContent>
+      <CardFooter className="p-2 border-t">
+        <form onSubmit={handleSend} className="flex w-full gap-2">
           <Input
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            onChange={(e) => setInputText(e.target.value.slice(0, MAX_MESSAGE_LENGTH))}
             placeholder="Type a message..."
-            className="h-9 text-sm"
+            className="h-8 text-sm"
+            maxLength={MAX_MESSAGE_LENGTH}
           />
-          <Button type="submit" size="sm" className="h-9 px-3">
-            Send
+          <Button type="submit" size="sm" className="h-8 px-3">
+            <Send className="w-3 h-3" />
+            <span className="sr-only">Send</span>
           </Button>
         </form>
-      </CardContent>
+      </CardFooter>
     </Card>
   )
 }

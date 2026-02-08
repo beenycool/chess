@@ -1,86 +1,88 @@
-'use client'
-
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { DataConnection, Peer as PeerType } from 'peerjs'
-import {
-  createInitialGame,
-  processMove,
-  tryJoinGame
-} from '@/lib/game-logic'
-import { useGameStore } from '@/store/game-store'
-import type { Game, GameState, Move } from '@/types/database'
-import { useAuth } from '@/hooks/use-auth'
+import type { DataConnection, Peer } from 'peerjs'
+import { useGameStore, ChatMessage } from '@/store/game-store'
+import { createInitialGame, processMove, tryJoinGame } from '@/lib/game-logic'
 import { recordGameResult } from '@/lib/game-results'
+import type { Game, GameState, Move } from '@/types/database'
 import { createBrowserSupabase } from '@/lib/supabase'
+import { useAuth } from './use-auth'
 
 type Message =
-  | { type: 'SYNC_GAME', payload: { game: Game, gameState: GameState, moves: Move[] } }
-  | { type: 'JOIN_REQUEST', payload: { playerId: string, color: 'white' | 'black', profileId?: string } }
+  | { type: 'JOIN_REQUEST', payload: { playerId: string, color?: 'white' | 'black', profileId?: string } }
+  | { type: 'SYNC_GAME', payload: { game: Game, gameState: GameState, moves: Move[], chatMessages: ChatMessage[] } }
   | { type: 'MAKE_MOVE', payload: { from: string, to: string, promotion?: string } }
-  | { type: 'ACTION', payload: { action: string, playerId: string, loser?: 'white' | 'black' } }
+  | { type: 'ACTION', payload: { action: 'resign' | 'offer_draw' | 'accept_draw' | 'timeout', playerId: string, loser?: 'white' | 'black' } }
+  | { type: 'CHAT', payload: ChatMessage }
   | { type: 'ERROR', payload: string }
-  | { type: 'CHAT', payload: { text: string, sender: string, timestamp: number } }
 
 export function usePeerGame(gameId: string, initialOptions?: { timeControl?: string, color?: string }) {
-  const { profile } = useAuth()
-  const [playerId] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = sessionStorage.getItem('chess_p2p_id')
-      if (stored) return stored
-      const newId = Math.random().toString(36).substring(2, 15)
-      sessionStorage.setItem('chess_p2p_id', newId)
-      return newId
-    }
-    return Math.random().toString(36).substring(2, 15)
-  })
-  const supabase = createBrowserSupabase()
-
   const {
+    game,
     setGame,
+    gameState,
     setGameState,
+    moves,
     setMoves,
+    chatMessages,
+    addChatMessage,
+    setChatMessages,
+    setPlayerId,
     setPlayerColor,
     setIsConnected,
-    game: gameStore,
-    gameState: gameStateStore,
-    moves: movesStore,
-    addChatMessage,
-    setPlayerId,
+    playerColor,
   } = useGameStore()
-  useEffect(() => {
-    if (playerId) {
-      setPlayerId(playerId)
-    }
-  }, [playerId, setPlayerId])
 
-
-  const [isHost, setIsHost] = useState(false)
-  const isHostRef = useRef(false)
+  const { profile } = useAuth()
   const [error, setError] = useState<string | null>(null)
 
-  const peerRef = useRef<PeerType | null>(null)
+  const createClientId = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID()
+    }
+    return Math.random().toString(36).substring(2, 15)
+  }
+
+  // Persistence for Player ID - use sessionStorage for tab-specific persistence
+  const [playerId] = useState(() => {
+    if (typeof window !== 'undefined') {
+        const stored = sessionStorage.getItem('chess_p2p_id')
+        if (stored) return stored
+        const newId = createClientId()
+        sessionStorage.setItem('chess_p2p_id', newId)
+        return newId
+    }
+    return ''
+  })
+
+  // Keep latest state in ref for callbacks
+  const gameStateRef = useRef<{ game: Game | null; gameState: GameState | null; moves: Move[]; chatMessages: ChatMessage[] }>({
+    game: null, gameState: null, moves: [], chatMessages: []
+  })
+
+  useEffect(() => {
+    gameStateRef.current = { game, gameState, moves, chatMessages }
+  }, [game, gameState, moves, chatMessages])
+
+  useEffect(() => {
+    setPlayerId(playerId)
+  }, [playerId, setPlayerId])
+
+  const peerRef = useRef<Peer | null>(null)
   const hostConnRef = useRef<DataConnection | null>(null)
   const guestConnsRef = useRef<Map<string, DataConnection>>(new Map())
+  const isHostRef = useRef(false)
+  const supabase = createBrowserSupabase()
 
-  const gameStateRef = useRef({ game: gameStore, gameState: gameStateStore, moves: movesStore })
-  useEffect(() => {
-    gameStateRef.current = { game: gameStore, gameState: gameStateStore, moves: movesStore }
-  }, [gameStore, gameStateStore, movesStore])
-
-  useEffect(() => {
-    isHostRef.current = isHost
-  }, [isHost])
-
-  // --- Utilities ---
-
-  const broadcast = useCallback((msg: Message) => {
-    guestConnsRef.current.forEach(conn => {
-      if (conn.open) conn.send(msg)
+  const broadcast = useCallback((msg: Message, excludePeer?: string) => {
+    guestConnsRef.current.forEach((conn, peerId) => {
+      if (peerId !== excludePeer) {
+        conn.send(msg)
+      }
     })
   }, [])
 
   const sendToHost = useCallback((msg: Message) => {
-    if (hostConnRef.current?.open) {
+    if (hostConnRef.current) {
       hostConnRef.current.send(msg)
     }
   }, [])
@@ -89,12 +91,18 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     conn.send({ type: 'ERROR', payload: message })
   }, [])
 
+  const publishGameToSupabase = useCallback(async (gameData: Game) => {
+    if (!isHostRef.current) return
+    const { error } = await supabase.from('games').upsert(gameData)
+    if (error) console.error('Failed to publish game:', error)
+  }, [supabase])
+
   const syncStateToGuest = useCallback((conn: DataConnection) => {
-    const { game, gameState, moves } = gameStateRef.current
+    const { game, gameState, moves, chatMessages } = gameStateRef.current
     if (game && gameState) {
       conn.send({
         type: 'SYNC_GAME',
-        payload: { game, gameState, moves }
+        payload: { game, gameState, moves, chatMessages }
       })
     }
   }, [])
@@ -110,95 +118,85 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
       reason: updatedGame.result_reason || 'unknown',
       pgn: gameStateRef.current.gameState?.pgn || '',
     })
-  }, [])
 
-  const publishGameToSupabase = useCallback(async (game: Game) => {
-    if (!isHostRef.current) return
-    const { error: supabaseError } = await supabase.from('games').upsert({
-      id: game.id,
-      status: game.status,
-      time_control: game.time_control,
-      white_id: game.white_id,
-      black_id: game.black_id,
-      white_player_id: game.white_player_id,
-      black_player_id: game.black_player_id,
-      initial_time_ms: game.initial_time_ms,
-      increment_ms: game.increment_ms,
-    })
-    if (supabaseError) console.error('Error publishing game to Supabase', supabaseError)
-  }, [supabase])
+    await publishGameToSupabase(updatedGame)
+  }, [publishGameToSupabase])
 
-  // --- Handlers ---
+  const handleActionAsHost = useCallback(async (payload: { action: 'resign' | 'offer_draw' | 'accept_draw' | 'timeout', playerId: string, loser?: 'white' | 'black' }) => {
+     const { game, gameState } = gameStateRef.current
+     if (!game || !gameState || game.status !== 'active') return
 
-  const handleActionAsHost = useCallback(async (payload: { action: string, playerId: string, loser?: 'white' | 'black' }) => {
-    const { game, gameState, moves } = gameStateRef.current
-    if (!game || !gameState) return
+     let updatedGame = { ...game }
+     let resultChanged = false
 
-    let updatedGame = { ...game }
-    const now = new Date().toISOString()
-
-    switch (payload.action) {
-      case 'resign': {
-        const isWhite = payload.playerId === game.white_player_id
-        updatedGame = {
-          ...game,
-          status: 'completed',
-          result: isWhite ? 'black' : 'white',
-          result_reason: 'resignation',
-          ended_at: now
-        }
-        break
-      }
-      case 'offer_draw': {
+     if (payload.action === 'resign') {
+        updatedGame.status = 'completed'
+        updatedGame.ended_at = new Date().toISOString()
+        updatedGame.result_reason = 'resignation'
+        if (updatedGame.white_player_id === payload.playerId) updatedGame.result = 'black'
+        else if (updatedGame.black_player_id === payload.playerId) updatedGame.result = 'white'
+        resultChanged = true
+     } else if (payload.action === 'offer_draw') {
+        // Logic for draw offers not fully implemented in state yet, just broadcast
         broadcast({ type: 'ACTION', payload })
         return
-      }
-      case 'accept_draw': {
-        updatedGame = {
-          ...game,
-          status: 'completed',
-          result: 'draw',
-          result_reason: 'agreement',
-          ended_at: now
-        }
-        break
-      }
-      case 'timeout': {
-        updatedGame = {
-          ...game,
-          status: 'completed',
-          result: payload.loser === 'white' ? 'black' : 'white',
-          result_reason: 'timeout',
-          ended_at: now
-        }
-        break
-      }
-    }
+     } else if (payload.action === 'accept_draw') {
+        updatedGame.status = 'completed'
+        updatedGame.ended_at = new Date().toISOString()
+        updatedGame.result = 'draw'
+        updatedGame.result_reason = 'agreement'
+        resultChanged = true
+     } else if (payload.action === 'timeout') {
+        updatedGame.status = 'completed'
+        updatedGame.ended_at = new Date().toISOString()
+        updatedGame.result_reason = 'timeout'
+        updatedGame.result = payload.loser === 'white' ? 'black' : 'white'
+        resultChanged = true
+     }
 
-    setGame(updatedGame)
-    broadcast({ type: 'SYNC_GAME', payload: { game: updatedGame, gameState, moves } })
+     if (resultChanged) {
+        setGame(updatedGame)
+        broadcast({
+            type: 'SYNC_GAME',
+            payload: { game: updatedGame, gameState, moves: gameStateRef.current.moves, chatMessages: gameStateRef.current.chatMessages }
+        })
 
-    if (updatedGame.status === 'completed') {
-      await handleGameCompletion(updatedGame)
-    } else {
-      await publishGameToSupabase(updatedGame)
-    }
+        if (updatedGame.status === 'completed') {
+          await handleGameCompletion(updatedGame)
+        } else {
+          await publishGameToSupabase(updatedGame)
+        }
+     }
   }, [broadcast, setGame, handleGameCompletion, publishGameToSupabase])
 
   const isValidMessage = (data: unknown): data is Message => {
     if (!data || typeof data !== 'object') return false
     const msg = data as Record<string, any>
     if (typeof msg.type !== 'string') return false
-
-    // Basic payload check
     if (!msg.payload) return false
 
-    // Specific payload validation could go here
-    if (msg.type === 'MAKE_MOVE') {
-      return typeof msg.payload.from === 'string' && typeof msg.payload.to === 'string'
+    switch (msg.type) {
+      case 'MAKE_MOVE':
+        return typeof msg.payload.from === 'string' && typeof msg.payload.to === 'string'
+      case 'CHAT':
+        return typeof msg.payload.id === 'string'
+          && typeof msg.payload.senderId === 'string'
+          && typeof msg.payload.senderName === 'string'
+          && typeof msg.payload.text === 'string'
+          && typeof msg.payload.timestamp === 'number'
+      case 'JOIN_REQUEST':
+        return typeof msg.payload.playerId === 'string'
+      case 'ACTION':
+        return typeof msg.payload.action === 'string' && typeof msg.payload.playerId === 'string'
+      case 'SYNC_GAME':
+        return Boolean(msg.payload.game && msg.payload.gameState)
+          && Array.isArray(msg.payload.moves)
+          && Array.isArray(msg.payload.chatMessages)
+      case 'ERROR':
+        return typeof msg.payload === 'string'
+      default:
+        return false
     }
-
-    return true
   }
 
   const handleMessageAsHost = useCallback(async (msg: Message, senderConn: DataConnection) => {
@@ -211,14 +209,16 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         if (result.success && result.game) {
           const updatedGame = { ...result.game }
 
-          // Use result.color to correctly assign ID
           if (result.color === 'white') updatedGame.white_id = msg.payload.profileId || null
           else if (result.color === 'black') updatedGame.black_id = msg.payload.profileId || null
+
+          const currentGameState = gameStateRef.current.gameState
+          if (!currentGameState) return
 
           setGame(updatedGame)
           broadcast({
             type: 'SYNC_GAME',
-            payload: { game: updatedGame, gameState: gameStateRef.current.gameState!, moves: gameStateRef.current.moves }
+            payload: { game: updatedGame, gameState: currentGameState, moves: gameStateRef.current.moves, chatMessages: gameStateRef.current.chatMessages }
           })
           await publishGameToSupabase(updatedGame)
         } else {
@@ -246,7 +246,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
 
           broadcast({
             type: 'SYNC_GAME',
-            payload: { game: updatedGame, gameState: result.newGameState, moves: updatedMoves }
+            payload: { game: updatedGame, gameState: result.newGameState, moves: updatedMoves, chatMessages: gameStateRef.current.chatMessages }
           })
 
           if (updatedGame.status === 'completed') {
@@ -260,21 +260,25 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
          handleActionAsHost(msg.payload)
          break
       }
+
       case 'CHAT': {
-        addChatMessage({ ...msg.payload, id: Math.random().toString() })
-        broadcast(msg)
-        break
+         addChatMessage(msg.payload)
+         broadcast(msg, senderConn.peer)
+         break
       }
     }
-  }, [broadcast, handleActionAsHost, sendError, setGame, setGameState, setMoves, handleGameCompletion, publishGameToSupabase])
+  }, [broadcast, handleActionAsHost, sendError, setGame, setGameState, setMoves, handleGameCompletion, publishGameToSupabase, addChatMessage])
 
   const handleMessageAsGuest = useCallback((msg: Message) => {
     switch (msg.type) {
       case 'SYNC_GAME': {
-        const { game: newGame, gameState: newGameState, moves: newMoves } = msg.payload
+        const { game: newGame, gameState: newGameState, moves: newMoves, chatMessages: newChatMessages } = msg.payload
         setGame(newGame)
         setGameState(newGameState)
         setMoves(newMoves)
+        const hostIds = new Set(newChatMessages.map((message) => message.id))
+        const localOnly = useGameStore.getState().chatMessages.filter((message) => !hostIds.has(message.id))
+        setChatMessages([...newChatMessages, ...localOnly])
 
         if (newGame.white_player_id === playerId) setPlayerColor('white')
         else if (newGame.black_player_id === playerId) setPlayerColor('black')
@@ -285,9 +289,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         break
       }
       case 'CHAT': {
-        if (msg.payload.sender !== playerId) {
-          addChatMessage({ ...msg.payload, id: Math.random().toString() })
-        }
+        addChatMessage(msg.payload)
         break
       }
       case 'ERROR': {
@@ -295,7 +297,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         break
       }
     }
-  }, [playerId, setGame, setGameState, setMoves, setPlayerColor])
+  }, [playerId, setGame, setGameState, setMoves, setPlayerColor, setChatMessages, addChatMessage])
 
   useEffect(() => {
     if (!gameId || !playerId || peerRef.current) return
@@ -305,7 +307,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
       const peer = new Peer(gameId)
 
       peer.on('open', async () => {
-        setIsHost(true)
+        isHostRef.current = true
         setIsConnected(true)
 
         if (initialOptions) {
@@ -321,6 +323,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
           setGame(newGame)
           setGameState(newGameState)
           setMoves([])
+          setChatMessages([])
 
           if (newGame.white_player_id === playerId) setPlayerColor('white')
           else if (newGame.black_player_id === playerId) setPlayerColor('black')
@@ -337,8 +340,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         })
       })
 
-      peer.on('error', (err: { type: string, message: string }) => {
-        if (err.type === 'unavailable-id') {
+      peer.on('error', (err) => {
+        if (err.type === 'peer-unavailable' || err.type === 'invalid-id') {
           peer.destroy()
           joinAsGuest()
         } else {
@@ -352,7 +355,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
       const { default: Peer } = await import('peerjs')
       const peer = new Peer()
       peer.on('open', () => {
-        setIsHost(false)
+        isHostRef.current = false
         const conn = peer.connect(gameId)
         conn.on('open', () => {
           setIsConnected(true)
@@ -366,7 +369,14 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     }
 
     initPeer()
-  }, [gameId, playerId, initialOptions, profile, setGame, setGameState, setMoves, setPlayerColor, setIsConnected, syncStateToGuest, handleMessageAsHost, handleMessageAsGuest, publishGameToSupabase])
+
+    return () => {
+      peerRef.current?.destroy()
+      peerRef.current = null
+      hostConnRef.current = null
+      guestConnsRef.current.clear()
+    }
+  }, [gameId, playerId, initialOptions, profile, setGame, setGameState, setMoves, setChatMessages, setPlayerColor, setIsConnected, syncStateToGuest, handleMessageAsHost, handleMessageAsGuest, publishGameToSupabase])
 
   // --- Public Interface ---
 
@@ -382,9 +392,11 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
 
             setGame(updatedGame)
             if (result.color) setPlayerColor(result.color)
+            const currentGameState = gameStateRef.current.gameState
+            if (!currentGameState) return { success: false, error: 'Game not ready' }
             broadcast({
                 type: 'SYNC_GAME',
-                payload: { game: updatedGame, gameState: gameStateRef.current.gameState!, moves: gameStateRef.current.moves }
+                payload: { game: updatedGame, gameState: currentGameState, moves: gameStateRef.current.moves, chatMessages: gameStateRef.current.chatMessages }
             })
             await publishGameToSupabase(updatedGame)
             return { success: true }
@@ -401,7 +413,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
 
   const makeMove = useCallback(async (from: string, to: string, promotion?: string): Promise<{ success: boolean, error?: string, pending?: boolean }> => {
     if (isHostRef.current) {
-        const { game, gameState, moves } = gameStateRef.current
+        const { game, gameState, moves, chatMessages } = gameStateRef.current
         if (!game || !gameState) return { success: false, error: 'Game not found' }
         const result = processMove(game, gameState, { from, to, promotion })
         if (result.success && result.newGameState && result.newMove) {
@@ -413,7 +425,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
 
             broadcast({
                 type: 'SYNC_GAME',
-                payload: { game: updatedGame, gameState: result.newGameState, moves: updatedMoves }
+                payload: { game: updatedGame, gameState: result.newGameState, moves: updatedMoves, chatMessages }
             })
 
             if (updatedGame.status === 'completed') {
@@ -424,7 +436,6 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         return { success: false, error: result.error || 'Invalid move' }
     } else {
         sendToHost({ type: 'MAKE_MOVE', payload: { from, to, promotion } })
-        // Return pending status for guest
         return { success: true, pending: true }
     }
   }, [sendToHost, broadcast, setGame, setGameState, setMoves, handleGameCompletion])
@@ -449,19 +460,23 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
      else sendToHost({ type: 'ACTION', payload: { action: 'timeout', playerId, loser } })
   }, [handleActionAsHost, playerId, sendToHost])
 
+  const sendChat = useCallback((text: string) => {
+    const message: ChatMessage = {
+        id: createClientId(),
+        senderId: playerId,
+        senderName: profile?.username || (playerColor === 'white' ? 'White' : playerColor === 'black' ? 'Black' : 'Spectator'),
+        text,
+        timestamp: Date.now()
+    }
 
-  const sendChatMessage = useCallback((text: string) => {
-    const timestamp = Date.now()
-    const msg = { text, sender: playerId, timestamp }
-    addChatMessage({ ...msg, id: Math.random().toString() })
+    addChatMessage(message)
 
     if (isHostRef.current) {
-      broadcast({ type: 'CHAT', payload: msg })
+        broadcast({ type: 'CHAT', payload: message })
     } else {
-      sendToHost({ type: 'CHAT', payload: msg })
+        sendToHost({ type: 'CHAT', payload: message })
     }
-  }, [playerId, addChatMessage,
-    setPlayerId, broadcast, sendToHost])
+  }, [playerId, profile, playerColor, addChatMessage, broadcast, sendToHost])
 
   return {
     error,
@@ -471,6 +486,6 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     offerDraw,
     acceptDraw,
     handleTimeout,
-    sendChatMessage
+    sendChat
   }
 }
