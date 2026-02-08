@@ -79,7 +79,7 @@ export default function ProfilePage() {
               <UserIcon className="w-12 h-12 text-primary" />
             </div>
             <CardTitle className="text-2xl">{profile.username}</CardTitle>
-            <p className="text-sm text-muted-foreground">{user.email}</p>
+
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-between items-center p-3 bg-muted rounded-lg">

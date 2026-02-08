@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Chess - Play with Friends",
-  description: "Play chess online with friends.",
+  title: "Chess - Play Online",
+  description: "Play chess online.",
 };
 
 export default function RootLayout({
