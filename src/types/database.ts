@@ -92,6 +92,7 @@ export type Database = {
           result: string | null
           result_reason: string | null
           started_at: string | null
+          /** One of: waiting, active, completed, or expired (timed-out waiting room). */
           status: string
           time_control: string
           white_id: string | null

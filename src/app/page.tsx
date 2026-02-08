@@ -1,7 +1,7 @@
 'use client'
 
 import { Game } from "@/types/database"
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { nanoid } from 'nanoid'
@@ -18,7 +18,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { createBrowserSupabase } from '@/lib/supabase'
 import { Badge } from '@/components/ui/badge'
 import { Play, Plus, Users, Globe } from 'lucide-react'
-import { TIME_CONTROLS } from '@/lib/constants'
+import { TIME_CONTROLS, WAITING_ROOM_TIMEOUT_MS } from '@/lib/constants'
 
 // Define a concrete type for games with player info
 type GameWithPlayers = Game & {
@@ -35,6 +35,7 @@ function HomeContent() {
   const [activeGames, setActiveGames] = useState<GameWithPlayers[]>([])
   const [loading, setLoading] = useState(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
+  const cleanupPollRef = useRef(0)
   const supabase = createBrowserSupabase()
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,10 +69,22 @@ function HomeContent() {
           if (b.status === 'waiting' && a.status !== 'waiting') return 1
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         })
-        // Cast to our defined type
-        setActiveGames(sortedGames as unknown as GameWithPlayers[])
+        // Hide expired and waiting games older than timeout
+        const cutoff = Date.now() - WAITING_ROOM_TIMEOUT_MS
+        const filtered = sortedGames.filter((game) => {
+          if (game.status === 'expired') return false
+          if (game.status === 'waiting' && new Date(game.created_at).getTime() < cutoff) return false
+          return true
+        })
+        setActiveGames(filtered as unknown as GameWithPlayers[])
     }
     setLoading(false)
+
+    // Fire-and-forget cleanup every 2nd poll to mark old waiting games as expired
+    cleanupPollRef.current += 1
+    if (cleanupPollRef.current % 2 === 0) {
+      fetch('/api/cleanup-waiting-games').catch(() => {})
+    }
   }, [supabase])
 
   useEffect(() => {
