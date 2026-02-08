@@ -47,7 +47,7 @@ export function ChessBoard({ onMove, disabled = false }: ChessBoardProps) {
       audio.play().catch(() => {})
     }
     prevMovesLenRef.current = moves.length
-  }, [moves.length, moves])
+  }, [moves.length])
 
   // Highlight squares for last move and selected piece options
   const customSquareStyles = useMemo(() => {
