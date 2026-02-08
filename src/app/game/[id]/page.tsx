@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useEffect, useState, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,9 @@ export default function GamePage() {
   const router = useRouter()
   const gameId = params.id as string
   
+  const autoJoinAttemptedRef = useRef(false)
+  const [joinError, setJoinError] = useState<string | null>(null)
+  
   const storedOptions = useMemo(() => {
     const urlTC = searchParams.get('timeControl')
     const urlColor = searchParams.get('color')
@@ -33,6 +36,7 @@ export default function GamePage() {
     return null
   }, [searchParams])
 
+  const intent = useMemo(() => searchParams.get('intent') as 'join' | 'spectate' | null, [searchParams])
   const timeControl = storedOptions?.timeControl
   const color = storedOptions?.color
 
@@ -57,8 +61,40 @@ export default function GamePage() {
     offerDraw,
     acceptDraw,
     handleTimeout,
-    sendChat
+    sendChat,
+    error: peerError,
+    isLoading: isPeerLoading
   } = usePeerGame(gameId, peerOptions)
+
+  // Auto-join logic for users coming from lobby with 'join' intent
+  useEffect(() => {
+    if (intent === 'join' && game && game.status === 'waiting' && !playerColor && !autoJoinAttemptedRef.current && !isPeerLoading) {
+      autoJoinAttemptedRef.current = true
+      
+      const attemptJoin = async () => {
+        // Try to join any available slot
+        const preferredColor = color !== 'random' ? color as 'white' | 'black' : undefined
+        const result = await joinGame(preferredColor || 'white')
+        
+        if (!result.success) {
+          // If preferred color failed, try the other color
+          if (preferredColor) {
+            const otherColor = preferredColor === 'white' ? 'black' : 'white'
+            const retryResult = await joinGame(otherColor)
+            if (!retryResult.success) {
+              setJoinError('Could not join the game - slot may already be taken')
+              toast.error('Could not join the game - it may already be full. You can spectate instead.')
+            }
+          } else {
+            setJoinError('Could not join the game - slot may already be taken')
+            toast.error('Could not join the game - it may already be full. You can spectate instead.')
+          }
+        }
+      }
+      
+      attemptJoin()
+    }
+  }, [intent, game, game?.status, playerColor, isPeerLoading, joinGame, color])
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
@@ -100,12 +136,48 @@ export default function GamePage() {
     }
   }, [playerColor, handleTimeout])
 
-  if (!game || !gameState) {
+  // Handle loading and error states
+  if (isPeerLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardContent className="p-8 text-center">
             <div className="animate-pulse">Loading game...</div>
+          </CardContent>
+        </Card>
+      </main>
+    )
+  }
+
+  if (peerError) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8 text-center space-y-4">
+            <p className="text-red-500 font-medium">{peerError}</p>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={() => router.push('/')} >
+                Back to Lobby
+              </Button>
+              <Button onClick={() => window.location.reload()} >
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    )
+  }
+
+  if (!game || !gameState) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8 text-center space-y-4">
+            <p className="text-red-500">Failed to load game</p>
+            <Button variant="outline" onClick={() => router.push('/')} >
+              Back to Lobby
+            </Button>
           </CardContent>
         </Card>
       </main>
@@ -145,6 +217,12 @@ export default function GamePage() {
                 <p className="text-sm text-muted-foreground">
                   Share the invite link with a friend to start playing
                 </p>
+                
+                {joinError && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                    {joinError}
+                  </div>
+                )}
                 
                 {!playerColor && (
                   <div className="flex gap-2">

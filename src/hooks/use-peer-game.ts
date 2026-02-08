@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useGameStore, ChatMessage } from '@/store/game-store'
 import { createInitialGame, processMove, tryJoinGame } from '@/lib/game-logic'
 import { recordGameResult } from '@/lib/game-results'
-// Types imported via store
+import type { GameState } from '@/types/database'
 import { createBrowserSupabase } from '@/lib/supabase'
 import { useAuth } from './use-auth'
 
@@ -112,7 +112,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
             if (newGame.white_player_id === playerId) setPlayerColor('white')
             else if (newGame.black_player_id === playerId) setPlayerColor('black')
           } else {
-            setError('Game not found and no options provided to create one')
+            setError('Game not found. It may have been deleted or never existed.')
             setIsLoading(false)
             return
           }
@@ -121,25 +121,62 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
           isHostRef.current = false
           
           // Load game state
-          const { data: gameStateData } = await supabase
+          const { data: gameStateData, error: stateError } = await supabase
             .from('game_states')
             .select('*')
             .eq('game_id', gameId)
             .single()
 
+          if (stateError && stateError.code !== 'PGRST116') {
+            console.error('Error fetching game state:', stateError)
+            // Don't fail the whole initialization if game_state is missing
+            // The game might exist but game_state got corrupted/removed
+          }
+
           // Load moves
-          const { data: movesData } = await supabase
+          const { data: movesData, error: movesError } = await supabase
             .from('moves')
             .select('*')
             .eq('game_id', gameId)
             .order('move_index', { ascending: true })
+
+          if (movesError) {
+            console.error('Error fetching moves:', movesError)
+          }
 
           // Load chat messages from local storage (not persisted to DB for now)
           const storedChat = sessionStorage.getItem(`chat_${gameId}`)
           const chatData: ChatMessage[] = storedChat ? JSON.parse(storedChat) : []
 
           setGame(existingGame)
-          if (gameStateData) setGameState(gameStateData)
+          
+          // If game state is missing, create a new one for active/completed games
+          if (!gameStateData) {
+            console.warn('Game state not found, creating default state')
+            const defaultGameState = {
+              game_id: gameId,
+              fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+              pgn: '',
+              move_index: movesData?.length || 0,
+              turn: (movesData?.length || 0) % 2 === 0 ? 'w' : 'b',
+              white_time_ms: existingGame.initial_time_ms,
+              black_time_ms: existingGame.initial_time_ms,
+              last_move_at: null,
+              is_check: false,
+              is_checkmate: false,
+              is_stalemate: false,
+              is_draw: false,
+              draw_reason: null,
+              last_move_san: null,
+              last_move_from: null,
+              last_move_to: null,
+              updated_at: new Date().toISOString()
+            }
+            setGameState(defaultGameState as GameState)
+          } else {
+            setGameState(gameStateData)
+          }
+          
           if (movesData) setMoves(movesData)
           setChatMessages(chatData)
 

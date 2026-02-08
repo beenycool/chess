@@ -55,15 +55,21 @@ function HomeContent() {
         white:white_id(username, elo),
         black:black_id(username, elo)
       `)
-      .eq('status', 'waiting')
-      .limit(10)
+      .in('status', ['waiting', 'active'])
+      .limit(20)
 
     if (error) {
         console.error('Error fetching active games:', error)
         setLobbyError('Failed to load active games')
     } else if (data) {
+        // Sort: waiting games first, then active games
+        const sortedGames = data.sort((a, b) => {
+          if (a.status === 'waiting' && b.status !== 'waiting') return -1
+          if (b.status === 'waiting' && a.status !== 'waiting') return 1
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        })
         // Cast to our defined type
-        setActiveGames(data as unknown as GameWithPlayers[])
+        setActiveGames(sortedGames as unknown as GameWithPlayers[])
     }
     setLoading(false)
   }, [supabase])
@@ -87,8 +93,10 @@ function HomeContent() {
     router.push(`/game/${gameId}?${params.toString()}`)
   }
 
-  const handleJoinGame = (gameId: string) => {
-    router.push(`/game/${gameId}`)
+  const handleJoinGame = (gameId: string, intent: 'join' | 'spectate' = 'join') => {
+    const params = new URLSearchParams()
+    params.set('intent', intent)
+    router.push(`/game/${gameId}?${params.toString()}`)
   }
 
   const initial = profile?.username?.[0] ? profile.username[0].toUpperCase() : 'U'
@@ -187,38 +195,68 @@ function HomeContent() {
             ) : activeGames.length === 0 ? (
               <div className="text-center py-12 space-y-4 border-2 border-dashed rounded-xl">
                 <Users className="w-12 h-12 text-muted-foreground mx-auto" />
-                <p className="text-muted-foreground">No active games waiting. Be the first to create one!</p>
+                <p className="text-muted-foreground">No active games available. Be the first to create one!</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {activeGames.map((game) => (
-                  <div
-                    key={game.id}
-                    className="flex items-center justify-between p-4 border rounded-xl hover:bg-muted/50 transition-colors group"
-                  >
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold">
-                          {game.white?.username || game.black?.username || 'Guest'}&apos;s Game
-                        </span>
-                        <Badge variant="secondary" className="text-[10px] px-1 h-4">
-                          {game.time_control}
-                        </Badge>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        Hosted by {game.white?.username || game.black?.username || 'Anonymous'}
-                      </span>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="group-hover:bg-primary group-hover:text-primary-foreground transition-all"
-                      onClick={() => handleJoinGame(game.id)}
+                {activeGames.map((game) => {
+                  const isWaiting = game.status === 'waiting'
+                  const isFull = game.white_player_id && game.black_player_id
+                  const canJoin = isWaiting && !isFull
+                  const hostName = game.white?.username || game.black?.username || 'Guest'
+                  
+                  return (
+                    <div
+                      key={game.id}
+                      className="flex items-center justify-between p-4 border rounded-xl hover:bg-muted/50 transition-colors group"
                     >
-                      Join Match
-                    </Button>
-                  </div>
-                ))}
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">
+                            {hostName}&apos;s Game
+                          </span>
+                          <Badge variant={isWaiting ? "default" : "secondary"} className="text-[10px] px-1 h-4">
+                            {game.time_control}
+                          </Badge>
+                          {isWaiting && (
+                            <Badge variant="outline" className="text-[10px] px-1 h-4 text-yellow-600 border-yellow-600">
+                              Waiting
+                            </Badge>
+                          )}
+                          {!isWaiting && (
+                            <Badge variant="outline" className="text-[10px] px-1 h-4 text-green-600 border-green-600">
+                              Live
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {isWaiting 
+                            ? `Hosted by ${hostName} - Waiting for opponent`
+                            : `${game.white?.username || 'White'} vs ${game.black?.username || 'Black'}`
+                          }
+                        </span>
+                      </div>
+                      {canJoin ? (
+                        <Button
+                          size="sm"
+                          className="group-hover:bg-primary group-hover:text-primary-foreground transition-all"
+                          onClick={() => handleJoinGame(game.id, 'join')}
+                        >
+                          Join Match
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="group-hover:bg-secondary group-hover:text-secondary-foreground transition-all"
+                          onClick={() => handleJoinGame(game.id, 'spectate')}
+                        >
+                          Spectate
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </CardContent>
