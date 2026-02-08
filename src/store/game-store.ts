@@ -37,10 +37,14 @@ interface GameStore {
   
   // Computed
   updateChessFromFen: (fen: string) => void
+  chatMessages: { sender: string; text: string; timestamp: number }[]
+  addChatMessage: (message: { sender: string; text: string; timestamp: number }) => void
   resetGame: () => void
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
+  chatMessages: [],
+  addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
   // Game data
   game: null,
   gameState: null,
@@ -112,6 +116,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   
   resetGame: () => set({
+    chatMessages: [],
     game: null,
     gameState: null,
     moves: [],

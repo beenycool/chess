@@ -19,10 +19,20 @@ type Message =
   | { type: 'MAKE_MOVE', payload: { from: string, to: string, promotion?: string } }
   | { type: 'ACTION', payload: { action: string, playerId: string, loser?: 'white' | 'black' } }
   | { type: 'ERROR', payload: string }
+  | { type: 'CHAT', payload: { sender: string; text: string; timestamp: number } }
 
 export function usePeerGame(gameId: string, initialOptions?: { timeControl?: string, color?: string }) {
   const { profile } = useAuth()
-  const [playerId] = useState(() => Math.random().toString(36).substring(2, 15))
+  const [playerId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('chess_player_id')
+      if (stored) return stored
+      const newId = Math.random().toString(36).substring(2, 15)
+      localStorage.setItem('chess_player_id', newId)
+      return newId
+    }
+    return Math.random().toString(36).substring(2, 15)
+  })
   const supabase = createBrowserSupabase()
 
   const {
@@ -34,6 +44,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     game: gameStore,
     gameState: gameStateStore,
     moves: movesStore,
+    addChatMessage,
   } = useGameStore()
 
   const [isHost, setIsHost] = useState(false)
@@ -242,6 +253,11 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
          handleActionAsHost(msg.payload)
          break
       }
+      case 'CHAT': {
+         addChatMessage(msg.payload)
+         broadcast(msg)
+         break
+      }
     }
   }, [broadcast, handleActionAsHost, sendError, setGame, setGameState, setMoves, handleGameCompletion, publishGameToSupabase])
 
@@ -358,15 +374,18 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
                 payload: { game: updatedGame, gameState: gameStateRef.current.gameState!, moves: gameStateRef.current.moves }
             })
             await publishGameToSupabase(updatedGame)
-            return { success: true }
+
+  return { success: true }
         }
-        return { success: false, error: 'Failed to join game' }
+
+  return { success: false, error: 'Failed to join game' }
     } else {
         sendToHost({
             type: 'JOIN_REQUEST',
             payload: { playerId, color, profileId: profile?.id }
         })
-        return { success: true }
+
+  return { success: true }
     }
   }, [playerId, profile, sendToHost, broadcast, setGame, setPlayerColor, publishGameToSupabase])
 
@@ -390,13 +409,16 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
             if (updatedGame.status === 'completed') {
               await handleGameCompletion(updatedGame)
             }
-            return { success: true }
+
+  return { success: true }
         }
-        return { success: false, error: result.error || 'Invalid move' }
+
+  return { success: false, error: result.error || 'Invalid move' }
     } else {
         sendToHost({ type: 'MAKE_MOVE', payload: { from, to, promotion } })
         // Return pending status for guest
-        return { success: true, pending: true }
+
+  return { success: true, pending: true }
     }
   }, [sendToHost, broadcast, setGame, setGameState, setMoves, handleGameCompletion])
 
@@ -420,6 +442,23 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
      else sendToHost({ type: 'ACTION', payload: { action: 'timeout', playerId, loser } })
   }, [handleActionAsHost, playerId, sendToHost])
 
+  const sendChat = useCallback((text: string) => {
+    const message = {
+      sender: profile?.username || (playerColor ? (playerColor === 'white' ? 'White' : 'Black') : 'Spectator'),
+      text,
+      timestamp: Date.now()
+    }
+
+    // Add locally first
+    addChatMessage(message)
+
+    if (isHostRef.current) {
+       broadcast({ type: 'CHAT', payload: message })
+    } else {
+       sendToHost({ type: 'CHAT', payload: message })
+    }
+  }, [profile, playerColor, broadcast, sendToHost, addChatMessage])
+
   return {
     error,
     makeMove,
@@ -427,6 +466,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     resign,
     offerDraw,
     acceptDraw,
-    handleTimeout
+    handleTimeout,
+    sendChat
   }
 }

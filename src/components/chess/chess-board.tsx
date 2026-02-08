@@ -3,7 +3,7 @@
 import { Chessboard } from 'react-chessboard'
 import { useGameStore } from '@/store/game-store'
 import { Square } from 'chess.js'
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 
 interface ChessBoardProps {
   onMove: (from: string, to: string, promotion?: string) => Promise<{ success: boolean; error?: string }>
@@ -17,9 +17,22 @@ export function ChessBoard({ onMove, disabled = false }: ChessBoardProps) {
     isMyTurn, 
     lastMoveSquares,
     gameState,
+    moves,
     game,
     playerColor,
   } = useGameStore()
+  // Sound effects
+  useEffect(() => {
+    if (moves && moves.length > 0) {
+      const lastMove = moves[moves.length - 1]
+      const isCapture = lastMove.san.includes('x')
+      const isCheck = lastMove.san.includes('+') || lastMove.san.includes('#')
+
+      const audio = new Audio(isCheck ? '/check.mp3' : (isCapture ? '/capture.mp3' : '/move.mp3'))
+      audio.play().catch(() => {})
+    }
+  }, [moves])
+
   
   const [moveFrom, setMoveFrom] = useState<string | null>(null)
   const [optionSquares, setOptionSquares] = useState<Record<string, React.CSSProperties>>({})

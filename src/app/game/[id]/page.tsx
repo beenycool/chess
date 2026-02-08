@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,7 +10,8 @@ import {
   ChessClock, 
   MoveHistory, 
   GameControls,
-  GameOverDialog 
+  GameOverDialog,
+  ChatCard
 } from '@/components/chess'
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
@@ -18,6 +19,7 @@ import { copyToClipboard } from '@/lib/utils/helpers'
 import { toast } from 'sonner'
 
 export default function GamePage() {
+  const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
   const gameId = params.id as string
@@ -55,12 +57,13 @@ export default function GamePage() {
     offerDraw,
     acceptDraw,
     handleTimeout,
+    sendChat,
   } = usePeerGame(gameId, peerOptions)
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
     await copyToClipboard(url)
-    toast.success('Invite link copied!')
+    toast.success('Link copied! Send it to your friend.')
   }, [])
 
   const handleJoinAsWhite = useCallback(async () => {
@@ -226,6 +229,7 @@ export default function GamePage() {
               </CardContent>
             </Card>
 
+
             <Card className="flex-1">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Moves</CardTitle>
@@ -234,6 +238,9 @@ export default function GamePage() {
                 <MoveHistory />
               </CardContent>
             </Card>
+
+            <ChatCard onSendMessage={sendChat} disabled={!isConnected} />
+
 
             <Card>
               <CardHeader className="pb-2">
@@ -247,13 +254,14 @@ export default function GamePage() {
                 />
               </CardContent>
             </Card>
+
           </div>
         </div>
 
         <GameOverDialog 
           open={showGameOver} 
           onRematch={() => {
-            window.location.href = '/'
+            router.push('/')
           }}
         />
       </div>
