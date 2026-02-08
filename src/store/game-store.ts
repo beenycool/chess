@@ -3,11 +3,21 @@ import { Chess } from 'chess.js'
 import type { Game, GameState, Move } from '@/types/database'
 import type { PlayerColor } from '@/lib/constants'
 
+export interface ChatMessage {
+  id: string
+  senderId: string
+  senderName: string
+  text: string
+  timestamp: number
+  isSystem?: boolean
+}
+
 interface GameStore {
   // Game data
   game: Game | null
   gameState: GameState | null
   moves: Move[]
+  chatMessages: ChatMessage[]
   
   // Local state
   chess: Chess
@@ -27,6 +37,8 @@ interface GameStore {
   setGameState: (gameState: GameState | null) => void
   setMoves: (moves: Move[]) => void
   addMove: (move: Move) => void
+  setChatMessages: (messages: ChatMessage[]) => void
+  addChatMessage: (message: ChatMessage) => void
   setPlayerId: (id: string) => void
   setPlayerColor: (color: PlayerColor) => void
   setBoardOrientation: (orientation: 'white' | 'black') => void
@@ -45,6 +57,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   game: null,
   gameState: null,
   moves: [],
+  chatMessages: [],
   
   // Local state
   chess: new Chess(),
@@ -83,6 +96,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setMoves: (moves) => set({ moves }),
   
   addMove: (move) => set((state) => ({ moves: [...state.moves, move] })),
+
+  setChatMessages: (messages) => set({ chatMessages: messages }),
+
+  addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
   
   setPlayerId: (id) => set({ playerId: id }),
   
@@ -115,6 +132,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     game: null,
     gameState: null,
     moves: [],
+    chatMessages: [],
     chess: new Chess(),
     playerColor: null,
     boardOrientation: 'white',

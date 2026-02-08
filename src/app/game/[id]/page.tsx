@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,7 +10,8 @@ import {
   ChessClock, 
   MoveHistory, 
   GameControls,
-  GameOverDialog 
+  GameOverDialog,
+  ChatBox
 } from '@/components/chess'
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
@@ -20,6 +21,7 @@ import { toast } from 'sonner'
 export default function GamePage() {
   const params = useParams()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const gameId = params.id as string
   
   const storedOptions = useMemo(() => {
@@ -31,8 +33,8 @@ export default function GamePage() {
     return null
   }, [gameId, searchParams])
 
-  const timeControl = storedOptions?.timeControl || undefined
-  const color = storedOptions?.color || undefined
+  const timeControl = storedOptions?.timeControl
+  const color = storedOptions?.color
 
   const {
     game,
@@ -44,7 +46,7 @@ export default function GamePage() {
   const showGameOver = game?.status === 'completed'
 
   const peerOptions = useMemo(
-    () => timeControl || color ? { timeControl, color } : undefined,
+    () => (timeControl && color) ? { timeControl, color } : undefined,
     [timeControl, color]
   )
 
@@ -55,12 +57,13 @@ export default function GamePage() {
     offerDraw,
     acceptDraw,
     handleTimeout,
+    sendChat
   } = usePeerGame(gameId, peerOptions)
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
     await copyToClipboard(url)
-    toast.success('Invite link copied!')
+    toast.success('Invite link copied! Send it to your friend.')
   }, [])
 
   const handleJoinAsWhite = useCallback(async () => {
@@ -235,6 +238,8 @@ export default function GamePage() {
               </CardContent>
             </Card>
 
+            <ChatBox onSendMessage={sendChat} />
+
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Controls</CardTitle>
@@ -253,7 +258,7 @@ export default function GamePage() {
         <GameOverDialog 
           open={showGameOver} 
           onRematch={() => {
-            window.location.href = '/'
+            router.push('/')
           }}
         />
       </div>

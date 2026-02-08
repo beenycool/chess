@@ -62,8 +62,10 @@ export function AuthModal() {
       }
     } catch (error: unknown) {
       let message = 'Authentication failed'
-      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
-        message = (error as any).message
+      if (error instanceof Error) {
+        message = error.message
+      } else if (typeof error === 'object' && error !== null && 'message' in error) {
+        message = String((error as any).message)
       }
       toast.error(message)
     } finally {
