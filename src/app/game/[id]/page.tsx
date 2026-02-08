@@ -10,7 +10,8 @@ import {
   ChessClock, 
   MoveHistory, 
   GameControls,
-  GameOverDialog 
+  GameOverDialog,
+  ChatBox
 } from '@/components/chess'
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
@@ -55,6 +56,7 @@ export default function GamePage() {
     offerDraw,
     acceptDraw,
     handleTimeout,
+    sendChatMessage,
   } = usePeerGame(gameId, peerOptions)
 
   const handleCopyInviteLink = useCallback(async () => {
@@ -247,6 +249,10 @@ export default function GamePage() {
                 />
               </CardContent>
             </Card>
+
+            <div className="h-[300px]">
+              <ChatBox onSendMessage={sendChatMessage} />
+            </div>
           </div>
         </div>
 

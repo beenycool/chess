@@ -3,6 +3,14 @@ import { Chess } from 'chess.js'
 import type { Game, GameState, Move } from '@/types/database'
 import type { PlayerColor } from '@/lib/constants'
 
+export interface ChatMessage {
+  id: string
+  sender: string
+  text: string
+  timestamp: number
+  isSystem?: boolean
+}
+
 interface GameStore {
   // Game data
   game: Game | null
@@ -21,6 +29,7 @@ interface GameStore {
   selectedSquare: string | null
   lastMoveSquares: { from: string; to: string } | null
   pendingDrawOffer: 'sent' | 'received' | null
+  chatMessages: ChatMessage[]
   
   // Actions
   setGame: (game: Game | null) => void
@@ -34,6 +43,7 @@ interface GameStore {
   setSelectedSquare: (square: string | null) => void
   setLastMoveSquares: (squares: { from: string; to: string } | null) => void
   setPendingDrawOffer: (offer: 'sent' | 'received' | null) => void
+  addChatMessage: (message: ChatMessage) => void
   
   // Computed
   updateChessFromFen: (fen: string) => void
@@ -58,6 +68,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedSquare: null,
   lastMoveSquares: null,
   pendingDrawOffer: null,
+  chatMessages: [],
   
   // Actions
   setGame: (game) => set({ game }),
@@ -105,6 +116,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setLastMoveSquares: (squares) => set({ lastMoveSquares: squares }),
   
   setPendingDrawOffer: (offer) => set({ pendingDrawOffer: offer }),
+
+  addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
   
   updateChessFromFen: (fen) => {
     const chess = new Chess(fen)
@@ -122,5 +135,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     selectedSquare: null,
     lastMoveSquares: null,
     pendingDrawOffer: null,
+  chatMessages: [],
   }),
 }))

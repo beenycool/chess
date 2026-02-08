@@ -3,7 +3,17 @@
 import { Chessboard } from 'react-chessboard'
 import { useGameStore } from '@/store/game-store'
 import { Square } from 'chess.js'
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+
+
+const SOUNDS = {
+  move: 'https://images.chesscomfiles.com/chess-themes/sounds/_Common/note/move-self.mp3',
+  capture: 'https://images.chesscomfiles.com/chess-themes/sounds/_Common/note/capture.mp3',
+  check: 'https://images.chesscomfiles.com/chess-themes/sounds/_Common/note/move-check.mp3',
+  castle: 'https://images.chesscomfiles.com/chess-themes/sounds/_Common/note/castle.mp3',
+  gameStart: 'https://images.chesscomfiles.com/chess-themes/sounds/_Common/note/game-start.mp3',
+  gameEnd: 'https://images.chesscomfiles.com/chess-themes/sounds/_Common/note/game-end.mp3',
+}
 
 interface ChessBoardProps {
   onMove: (from: string, to: string, promotion?: string) => Promise<{ success: boolean; error?: string }>
@@ -19,6 +29,7 @@ export function ChessBoard({ onMove, disabled = false }: ChessBoardProps) {
     gameState,
     game,
     playerColor,
+    moves,
   } = useGameStore()
   
   const [moveFrom, setMoveFrom] = useState<string | null>(null)
@@ -26,6 +37,59 @@ export function ChessBoard({ onMove, disabled = false }: ChessBoardProps) {
 
   const isGameActive = game?.status === 'active'
   const canMove = isGameActive && isMyTurn && !disabled && playerColor !== null
+
+  const isFirstRender = useRef(true)
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+
+    if (!game || !gameState) return
+
+    // Game Over
+    if (game.status === 'completed') {
+      new Audio(SOUNDS.gameEnd).play().catch(() => {})
+      return
+    }
+
+    // Game Start (only if just started)
+    if (gameState.move_index === 0 && game.status === 'active' && moves.length === 0) {
+       new Audio(SOUNDS.gameStart).play().catch(() => {})
+       return
+    }
+
+    // Moves
+    const lastMove = gameState.last_move_san
+    // If no last move, do nothing (unless game start handled above)
+    if (!lastMove && gameState.move_index > 0) return
+
+    // Check if it was a check
+    if (gameState.is_check) {
+      new Audio(SOUNDS.check).play().catch(() => {})
+      return
+    }
+
+    // Check if capture (x in SAN)
+    if (lastMove && lastMove.includes('x')) {
+      new Audio(SOUNDS.capture).play().catch(() => {})
+      return
+    }
+
+    // Check if castle (O-O or O-O-O)
+    if (lastMove && lastMove.includes('O-O')) {
+      new Audio(SOUNDS.castle).play().catch(() => {})
+      return
+    }
+
+    // Normal move
+    if (lastMove) {
+        new Audio(SOUNDS.move).play().catch(() => {})
+    }
+
+  }, [gameState?.move_index, gameState?.is_check, game?.status])
+
 
   // Highlight squares for last move and selected piece options
   const customSquareStyles = useMemo(() => {

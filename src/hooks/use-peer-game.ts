@@ -19,10 +19,20 @@ type Message =
   | { type: 'MAKE_MOVE', payload: { from: string, to: string, promotion?: string } }
   | { type: 'ACTION', payload: { action: string, playerId: string, loser?: 'white' | 'black' } }
   | { type: 'ERROR', payload: string }
+  | { type: 'CHAT', payload: { text: string, sender: string, timestamp: number } }
 
 export function usePeerGame(gameId: string, initialOptions?: { timeControl?: string, color?: string }) {
   const { profile } = useAuth()
-  const [playerId] = useState(() => Math.random().toString(36).substring(2, 15))
+  const [playerId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('chess_p2p_id')
+      if (stored) return stored
+      const newId = Math.random().toString(36).substring(2, 15)
+      sessionStorage.setItem('chess_p2p_id', newId)
+      return newId
+    }
+    return Math.random().toString(36).substring(2, 15)
+  })
   const supabase = createBrowserSupabase()
 
   const {
@@ -34,7 +44,15 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     game: gameStore,
     gameState: gameStateStore,
     moves: movesStore,
+    addChatMessage,
+    setPlayerId,
   } = useGameStore()
+  useEffect(() => {
+    if (playerId) {
+      setPlayerId(playerId)
+    }
+  }, [playerId, setPlayerId])
+
 
   const [isHost, setIsHost] = useState(false)
   const isHostRef = useRef(false)
@@ -242,6 +260,11 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
          handleActionAsHost(msg.payload)
          break
       }
+      case 'CHAT': {
+        addChatMessage({ ...msg.payload, id: Math.random().toString() })
+        broadcast(msg)
+        break
+      }
     }
   }, [broadcast, handleActionAsHost, sendError, setGame, setGameState, setMoves, handleGameCompletion, publishGameToSupabase])
 
@@ -259,6 +282,12 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
         break
       }
       case 'ACTION': {
+        break
+      }
+      case 'CHAT': {
+        if (msg.payload.sender !== playerId) {
+          addChatMessage({ ...msg.payload, id: Math.random().toString() })
+        }
         break
       }
       case 'ERROR': {
@@ -420,6 +449,20 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
      else sendToHost({ type: 'ACTION', payload: { action: 'timeout', playerId, loser } })
   }, [handleActionAsHost, playerId, sendToHost])
 
+
+  const sendChatMessage = useCallback((text: string) => {
+    const timestamp = Date.now()
+    const msg = { text, sender: playerId, timestamp }
+    addChatMessage({ ...msg, id: Math.random().toString() })
+
+    if (isHostRef.current) {
+      broadcast({ type: 'CHAT', payload: msg })
+    } else {
+      sendToHost({ type: 'CHAT', payload: msg })
+    }
+  }, [playerId, addChatMessage,
+    setPlayerId, broadcast, sendToHost])
+
   return {
     error,
     makeMove,
@@ -427,6 +470,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
     resign,
     offerDraw,
     acceptDraw,
-    handleTimeout
+    handleTimeout,
+    sendChatMessage
   }
 }
