@@ -69,26 +69,15 @@ function HomeContent() {
   }, [supabase])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     fetchActiveGames()
-    // Set up real-time subscription for active games, filtered by status=waiting
-    const channel = supabase
-      .channel('public:games')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'games',
-        filter: 'status=eq.waiting'
-      }, () => {
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    fetchActiveGames()
-      })
-      .subscribe()
+    
+    // Poll for active games every 5 seconds
+    const interval = setInterval(fetchActiveGames, 5000)
 
     return () => {
-      supabase.removeChannel(channel)
+      clearInterval(interval)
     }
-  }, [fetchActiveGames, supabase])
+  }, [fetchActiveGames])
 
   const handleCreateGame = () => {
     const gameId = nanoid(10)
