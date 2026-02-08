@@ -31,7 +31,7 @@ export default function GamePage() {
         return { timeControl: urlTC, color: (urlColor as 'white' | 'black' | 'random') || 'random' }
     }
     return null
-  }, [gameId, searchParams])
+  }, [searchParams])
 
   const timeControl = storedOptions?.timeControl
   const color = storedOptions?.color

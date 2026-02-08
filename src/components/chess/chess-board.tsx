@@ -3,7 +3,7 @@
 import { Chessboard } from 'react-chessboard'
 import { useGameStore } from '@/store/game-store'
 import { Square } from 'chess.js'
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 
 interface ChessBoardProps {
   onMove: (from: string, to: string, promotion?: string) => Promise<{ success: boolean; error?: string }>
@@ -27,10 +27,11 @@ export function ChessBoard({ onMove, disabled = false }: ChessBoardProps) {
 
   const isGameActive = game?.status === 'active'
   const canMove = isGameActive && isMyTurn && !disabled && playerColor !== null
+  const prevMovesLenRef = useRef(moves.length)
 
   // Sound effects
   useEffect(() => {
-    if (moves.length > 0) {
+    if (moves.length > prevMovesLenRef.current) {
       const lastMove = moves[moves.length - 1]
       let soundFile = '/move.mp3'
 
@@ -43,11 +44,10 @@ export function ChessBoard({ onMove, disabled = false }: ChessBoardProps) {
       }
 
       const audio = new Audio(soundFile)
-      audio.play().catch(() => {
-        // Ignore errors (e.g. user hasn't interacted yet or file missing)
-      })
+      audio.play().catch(() => {})
     }
-  }, [moves])
+    prevMovesLenRef.current = moves.length
+  }, [moves.length, moves])
 
   // Highlight squares for last move and selected piece options
   const customSquareStyles = useMemo(() => {

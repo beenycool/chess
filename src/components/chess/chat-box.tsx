@@ -15,6 +15,7 @@ export function ChatBox({ onSendMessage }: ChatBoxProps) {
   const { chatMessages, playerId } = useGameStore()
   const [inputText, setInputText] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const MAX_MESSAGE_LENGTH = 500
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -24,8 +25,9 @@ export function ChatBox({ onSendMessage }: ChatBoxProps) {
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputText.trim()) return
-    onSendMessage(inputText)
+    const trimmed = inputText.trim()
+    if (!trimmed || trimmed.length > MAX_MESSAGE_LENGTH) return
+    onSendMessage(trimmed)
     setInputText('')
   }
 
@@ -70,9 +72,10 @@ export function ChatBox({ onSendMessage }: ChatBoxProps) {
         <form onSubmit={handleSend} className="flex w-full gap-2">
           <Input
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            onChange={(e) => setInputText(e.target.value.slice(0, MAX_MESSAGE_LENGTH))}
             placeholder="Type a message..."
             className="h-8 text-sm"
+            maxLength={MAX_MESSAGE_LENGTH}
           />
           <Button type="submit" size="sm" className="h-8 px-3">
             <Send className="w-3 h-3" />

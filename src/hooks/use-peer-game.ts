@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { DataConnection, Peer } from 'peerjs'
+import type { DataConnection, Peer, PeerError } from 'peerjs'
 import { useGameStore, ChatMessage } from '@/store/game-store'
 import { createInitialGame, processMove, tryJoinGame } from '@/lib/game-logic'
 import { recordGameResult } from '@/lib/game-results'
@@ -35,12 +35,19 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
   const { profile } = useAuth()
   const [error, setError] = useState<string | null>(null)
 
+  const createClientId = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID()
+    }
+    return Math.random().toString(36).substring(2, 15)
+  }
+
   // Persistence for Player ID
   const [playerId] = useState(() => {
     if (typeof window !== 'undefined') {
         const stored = localStorage.getItem('chess_p2p_id')
         if (stored) return stored
-        const newId = Math.random().toString(36).substring(2, 15)
+        const newId = createClientId()
         localStorage.setItem('chess_p2p_id', newId)
         return newId
     }
@@ -167,7 +174,29 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
     const msg = data as Record<string, any>
     if (typeof msg.type !== 'string') return false
     if (!msg.payload) return false
-    return true
+
+    switch (msg.type) {
+      case 'MAKE_MOVE':
+        return typeof msg.payload.from === 'string' && typeof msg.payload.to === 'string'
+      case 'CHAT':
+        return typeof msg.payload.id === 'string'
+          && typeof msg.payload.senderId === 'string'
+          && typeof msg.payload.senderName === 'string'
+          && typeof msg.payload.text === 'string'
+          && typeof msg.payload.timestamp === 'number'
+      case 'JOIN_REQUEST':
+        return typeof msg.payload.playerId === 'string'
+      case 'ACTION':
+        return typeof msg.payload.action === 'string' && typeof msg.payload.playerId === 'string'
+      case 'SYNC_GAME':
+        return Boolean(msg.payload.game && msg.payload.gameState)
+          && Array.isArray(msg.payload.moves)
+          && Array.isArray(msg.payload.chatMessages)
+      case 'ERROR':
+        return typeof msg.payload === 'string'
+      default:
+        return false
+    }
   }
 
   const handleMessageAsHost = useCallback(async (msg: Message, senderConn: DataConnection) => {
@@ -183,10 +212,13 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
           if (result.color === 'white') updatedGame.white_id = msg.payload.profileId || null
           else if (result.color === 'black') updatedGame.black_id = msg.payload.profileId || null
 
+          const currentGameState = gameStateRef.current.gameState
+          if (!currentGameState) return
+
           setGame(updatedGame)
           broadcast({
             type: 'SYNC_GAME',
-            payload: { game: updatedGame, gameState: gameStateRef.current.gameState!, moves: gameStateRef.current.moves, chatMessages: gameStateRef.current.chatMessages }
+            payload: { game: updatedGame, gameState: currentGameState, moves: gameStateRef.current.moves, chatMessages: gameStateRef.current.chatMessages }
           })
           await publishGameToSupabase(updatedGame)
         } else {
@@ -244,7 +276,9 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
         setGame(newGame)
         setGameState(newGameState)
         setMoves(newMoves)
-        setChatMessages(newChatMessages)
+        const hostIds = new Set(newChatMessages.map((message) => message.id))
+        const localOnly = useGameStore.getState().chatMessages.filter((message) => !hostIds.has(message.id))
+        setChatMessages([...newChatMessages, ...localOnly])
 
         if (newGame.white_player_id === playerId) setPlayerColor('white')
         else if (newGame.black_player_id === playerId) setPlayerColor('black')
@@ -306,8 +340,8 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
         })
       })
 
-      peer.on('error', (err: { type: string, message: string }) => {
-        if (err.type === 'unavailable-id') {
+      peer.on('error', (err: PeerError) => {
+        if (err.type === 'peer-unavailable' || err.type === 'invalid-id') {
           peer.destroy()
           joinAsGuest()
         } else {
@@ -335,6 +369,13 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
     }
 
     initPeer()
+
+    return () => {
+      peerRef.current?.destroy()
+      peerRef.current = null
+      hostConnRef.current = null
+      guestConnsRef.current.clear()
+    }
   }, [gameId, playerId, initialOptions, profile, setGame, setGameState, setMoves, setChatMessages, setPlayerColor, setIsConnected, syncStateToGuest, handleMessageAsHost, handleMessageAsGuest, publishGameToSupabase])
 
   // --- Public Interface ---
@@ -351,9 +392,11 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
 
             setGame(updatedGame)
             if (result.color) setPlayerColor(result.color)
+            const currentGameState = gameStateRef.current.gameState
+            if (!currentGameState) return { success: false, error: 'Game not ready' }
             broadcast({
                 type: 'SYNC_GAME',
-                payload: { game: updatedGame, gameState: gameStateRef.current.gameState!, moves: gameStateRef.current.moves, chatMessages: gameStateRef.current.chatMessages }
+                payload: { game: updatedGame, gameState: currentGameState, moves: gameStateRef.current.moves, chatMessages: gameStateRef.current.chatMessages }
             })
             await publishGameToSupabase(updatedGame)
             return { success: true }
@@ -419,7 +462,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl: stri
 
   const sendChat = useCallback((text: string) => {
     const message: ChatMessage = {
-        id: Math.random().toString(36).substring(2, 9),
+        id: createClientId(),
         senderId: playerId,
         senderName: profile?.username || (playerColor === 'white' ? 'White' : playerColor === 'black' ? 'Black' : 'Spectator'),
         text,

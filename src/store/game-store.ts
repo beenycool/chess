@@ -12,6 +12,8 @@ export interface ChatMessage {
   isSystem?: boolean
 }
 
+const MAX_CHAT_MESSAGES = 200
+
 interface GameStore {
   // Game data
   game: Game | null
@@ -97,9 +99,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   
   addMove: (move) => set((state) => ({ moves: [...state.moves, move] })),
 
-  setChatMessages: (messages) => set({ chatMessages: messages }),
+  setChatMessages: (messages) => set({ chatMessages: messages.slice(-MAX_CHAT_MESSAGES) }),
 
-  addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
+  addChatMessage: (message) =>
+    set((state) => ({ chatMessages: [...state.chatMessages, message].slice(-MAX_CHAT_MESSAGES) })),
   
   setPlayerId: (id) => set({ playerId: id }),
   
