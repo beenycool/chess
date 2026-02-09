@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { WAITING_ROOM_TIMEOUT_MS } from '@/lib/constants'
 
 export function getOrCreatePlayerId(userId?: string): string {
   // If user is logged in, use their Supabase user ID
@@ -61,4 +62,10 @@ export function copyToClipboard(text: string): Promise<void> {
 
 export function generateGameId(): string {
   return nanoid(10)
+}
+
+export function isGameExpired(game: { status: string; created_at: string }): boolean {
+  if (game.status === 'expired') return true
+  if (game.status !== 'waiting') return false
+  return new Date(game.created_at).getTime() < Date.now() - WAITING_ROOM_TIMEOUT_MS
 }

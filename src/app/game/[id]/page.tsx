@@ -15,7 +15,7 @@ import {
 } from '@/components/chess'
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
-import { copyToClipboard } from '@/lib/utils/helpers'
+import { copyToClipboard, isGameExpired } from '@/lib/utils/helpers'
 import { toast } from 'sonner'
 import { WAITING_ROOM_TIMEOUT_MS } from '@/lib/constants'
 
@@ -100,7 +100,7 @@ export default function GamePage() {
 
   // Host countdown: when waiting, show "Room expires in M:SS" and redirect when time runs out
   useEffect(() => {
-    if (!game || game.status !== 'waiting' || !playerColor) {
+    if (!game || game.status !== 'waiting') {
       setWaitingRoomSecondsLeft(null)
       return
     }
@@ -108,7 +108,10 @@ export default function GamePage() {
     const update = () => {
       const left = Math.ceil((deadline - Date.now()) / 1000)
       if (left <= 0) {
-        router.push('/')
+        if (playerColor) {
+          router.push('/')
+        }
+        setWaitingRoomSecondsLeft(0)
         return
       }
       setWaitingRoomSecondsLeft(left)
@@ -116,12 +119,12 @@ export default function GamePage() {
     update()
     const interval = setInterval(update, 1000)
     return () => clearInterval(interval)
-  }, [game?.id, game?.status, game?.created_at, playerColor, router])
+  }, [game?.status, game?.created_at, playerColor, router])
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
     await copyToClipboard(url)
-    toast.success('Invite link copied! Send it to your friend.')
+    toast.success('Invite link copied! Share it to start playing.')
   }, [])
 
   const handleJoinAsWhite = useCallback(async () => {
@@ -206,10 +209,7 @@ export default function GamePage() {
     )
   }
 
-  const isRoomExpired =
-    game.status === 'expired' ||
-    (game.status === 'waiting' &&
-      new Date(game.created_at).getTime() < Date.now() - WAITING_ROOM_TIMEOUT_MS)
+  const isRoomExpired = isGameExpired(game)
 
   if (isRoomExpired) {
     return (
@@ -257,7 +257,7 @@ export default function GamePage() {
               <div className="flex flex-col items-center gap-4">
                 <p className="text-lg">Waiting for opponent...</p>
                 <p className="text-sm text-muted-foreground">
-                  Share the invite link with a friend to start playing
+                  Share the invite link to start playing
                 </p>
                 {waitingRoomSecondsLeft !== null && (
                   <p className="text-xs text-muted-foreground">

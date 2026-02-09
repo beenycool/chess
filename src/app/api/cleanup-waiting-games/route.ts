@@ -3,16 +3,22 @@ import { createClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database'
 import { WAITING_ROOM_TIMEOUT_MS } from '@/lib/constants'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const cleanupSecret = process.env.CLEANUP_SECRET
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseServiceRoleKey || !cleanupSecret) {
   throw new Error('Missing Supabase env vars')
 }
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+    const authHeader = request.headers.get('authorization')
+    if (authHeader !== `Bearer ${cleanupSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const supabase = createClient<Database>(supabaseUrl, supabaseServiceRoleKey)
     const cutoff = new Date(Date.now() - WAITING_ROOM_TIMEOUT_MS).toISOString()
 
     const { error } = await supabase
