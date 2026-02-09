@@ -24,7 +24,7 @@ export function Navbar() {
           <div className="bg-primary text-primary-foreground p-1.5 rounded-lg group-hover:rotate-12 transition-transform">
             <Swords className="w-5 h-5" />
           </div>
-          <span className="tracking-tight">ChessFriends</span>
+          <span className="tracking-tight">Chess</span>
         </Link>
 
         <div className="flex items-center gap-2 sm:gap-4">
