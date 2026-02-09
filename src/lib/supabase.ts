@@ -1,22 +1,33 @@
 import { createBrowserClient, createServerClient } from '@supabase/ssr'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
-if (!supabaseUrl) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-if (!supabaseAnonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY')
+export const createBrowserSupabase = () => {
+  if (typeof window === 'undefined') {
+    return {} as SupabaseClient<Database>
+  }
 
-export const createBrowserSupabase = () =>
-  createBrowserClient<Database>(supabaseUrl, supabaseAnonKey)
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
+
+  return createBrowserClient<Database>(supabaseUrl, supabaseAnonKey)
+}
 
 export const createServerSupabase = (context: {
   cookies: {
     getAll: () => { name: string; value: string }[]
     setAll: (cookies: { name: string; value: string; options: Record<string, any> }[]) => void
   }
-}) =>
-  createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
+}) => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
+
+  return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return context.cookies.getAll()
@@ -26,3 +37,4 @@ export const createServerSupabase = (context: {
       },
     },
   })
+}

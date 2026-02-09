@@ -63,8 +63,8 @@ function HomeContent() {
       .from('games')
       .select(`
         *,
-        white:white_id(username, elo),
-        black:black_id(username, elo)
+        white:profiles!games_white_id_fkey(username, elo),
+        black:profiles!games_black_id_fkey(username, elo)
       `)
       .in('status', ['waiting', 'active'])
       .limit(20)
