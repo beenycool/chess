@@ -1,11 +1,9 @@
 import { createBrowserClient, createServerClient } from '@supabase/ssr'
 import { Database } from '@/types/database'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-if (!supabaseUrl) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-if (!supabaseAnonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY')
+// Use placeholders during build if environment variables are missing
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co'
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
 
 export const createBrowserSupabase = () =>
   createBrowserClient<Database>(supabaseUrl, supabaseAnonKey)
@@ -13,7 +11,7 @@ export const createBrowserSupabase = () =>
 export const createServerSupabase = (context: {
   cookies: {
     getAll: () => { name: string; value: string }[]
-    setAll: (cookies: { name: string; value: string; options: Record<string, any> }[]) => void
+    setAll: (cookies: { name: string; value: string; options: Record<string, unknown> }[]) => void
   }
 }) =>
   createServerClient<Database>(supabaseUrl, supabaseAnonKey, {

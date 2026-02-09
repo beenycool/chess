@@ -101,8 +101,8 @@ export default function GamePage() {
   // Host countdown: when waiting, show "Room expires in M:SS" and redirect when time runs out
   useEffect(() => {
     if (!game || game.status !== 'waiting') {
-      setWaitingRoomSecondsLeft(null)
-      return
+      const timeoutId = setTimeout(() => setWaitingRoomSecondsLeft(null), 0)
+      return () => clearTimeout(timeoutId)
     }
     const deadline = new Date(game.created_at).getTime() + WAITING_ROOM_TIMEOUT_MS
     const update = () => {
@@ -116,10 +116,16 @@ export default function GamePage() {
       }
       setWaitingRoomSecondsLeft(left)
     }
-    update()
+
+    // Initial update deferred to avoid synchronous setState during render
+    const timeoutId = setTimeout(update, 0)
     const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
-  }, [game?.status, game?.created_at, playerColor, router])
+
+    return () => {
+      clearTimeout(timeoutId)
+      clearInterval(interval)
+    }
+  }, [game, playerColor, router])
 
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href

@@ -41,8 +41,8 @@ export function SignInCard({ onSignedIn, title = 'Sign In', description }: SignI
       onSignedIn?.()
     } catch (error: unknown) {
       let message = 'Authentication failed'
-      if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
-        message = (error as any).message
+      if (typeof error === 'object' && error !== null && 'message' in error && typeof ((error as { message: string }).message) === 'string') {
+        message = ((error as { message: string }).message)
       }
       toast.error(message)
     } finally {

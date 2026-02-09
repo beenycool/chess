@@ -28,8 +28,8 @@ export default function ProfilePage() {
       .from('games')
       .select(`
         *,
-        white:white_id(username, elo),
-        black:black_id(username, elo)
+        white:profiles!white_id(username, elo),
+        black:profiles!black_id(username, elo)
       `)
       .or(`white_id.eq.${user.id},black_id.eq.${user.id}`)
       .order('created_at', { ascending: false })

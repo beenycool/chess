@@ -51,7 +51,7 @@ export function AuthModal() {
       if (error instanceof Error) {
         message = error.message
       } else if (typeof error === 'object' && error !== null && 'message' in error) {
-        message = String((error as any).message)
+        message = String(((error as { message: string }).message))
       }
       toast.error(message)
     } finally {
