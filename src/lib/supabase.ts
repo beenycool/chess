@@ -32,7 +32,7 @@ const createNoopSupabase = (): SupabaseClient<Database> => {
     return query
   })()
 
-  return {
+  const noopClient = {
     auth: {
       onAuthStateChange: (..._args: unknown[]) => ({
         data: {
@@ -46,7 +46,9 @@ const createNoopSupabase = (): SupabaseClient<Database> => {
     },
     from: (..._args: unknown[]) => noopQuery,
     rpc: async (..._args: unknown[]) => ({ data: null, error: null }),
-  } as SupabaseClient<Database>
+  } as unknown as SupabaseClient<Database>
+
+  return noopClient
 }
 
 export const createBrowserSupabase = () => {
