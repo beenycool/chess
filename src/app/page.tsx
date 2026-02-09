@@ -19,11 +19,22 @@ import { createBrowserSupabase } from '@/lib/supabase'
 import { Badge } from '@/components/ui/badge'
 import { Play, Plus, Users, Globe } from 'lucide-react'
 import { TIME_CONTROLS } from '@/lib/constants'
+import { isGameExpired } from '@/lib/utils/helpers'
 
 // Define a concrete type for games with player info
 type GameWithPlayers = Game & {
   white: { username: string; elo: number } | null
   black: { username: string; elo: number } | null
+}
+
+function isGameWithPlayers(game: unknown): game is GameWithPlayers {
+  return (
+    typeof game === 'object' &&
+    game !== null &&
+    'id' in game &&
+    'status' in game &&
+    'created_at' in game
+  )
 }
 
 function HomeContent() {
@@ -62,14 +73,15 @@ function HomeContent() {
         console.error('Error fetching active games:', error)
         setLobbyError('Failed to load active games')
     } else if (data) {
+        const games = data.filter(isGameWithPlayers)
         // Sort: waiting games first, then active games
-        const sortedGames = data.sort((a, b) => {
+        const sortedGames = games.sort((a, b) => {
           if (a.status === 'waiting' && b.status !== 'waiting') return -1
           if (b.status === 'waiting' && a.status !== 'waiting') return 1
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         })
-        // Cast to our defined type
-        setActiveGames(sortedGames as unknown as GameWithPlayers[])
+        const filtered = sortedGames.filter((game) => !isGameExpired(game))
+        setActiveGames(filtered)
     }
     setLoading(false)
   }, [supabase])
@@ -105,10 +117,10 @@ function HomeContent() {
     <main className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
       <div className="text-center py-8 space-y-4">
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight">
-          Play Chess with Friends
+          Play Chess
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Create a room, invite a friend, and play instantly in your browser.
+          Create a room, invite an opponent, and play instantly in your browser.
           No complex setup, just pure chess.
         </p>
       </div>

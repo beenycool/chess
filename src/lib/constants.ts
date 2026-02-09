@@ -20,8 +20,11 @@ export const TIME_CONTROLS: TimeControl[] = [
 
 export const DEFAULT_TIME_CONTROL = TIME_CONTROLS[6] // 10+0
 
+/** Time after which a waiting room is hidden from lobby and can be marked expired (ms). */
+export const WAITING_ROOM_TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
+
 export type PlayerColor = 'white' | 'black' | null
-export type GameStatus = 'waiting' | 'active' | 'completed'
+export type GameStatus = 'waiting' | 'active' | 'completed' | 'expired'
 export type GameResult = 'white' | 'black' | 'draw' | null
 export type ResultReason = 
   | 'checkmate' 

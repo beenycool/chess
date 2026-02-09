@@ -15,8 +15,9 @@ import {
 } from '@/components/chess'
 import { useGameStore } from '@/store/game-store'
 import { usePeerGame } from '@/hooks/use-peer-game'
-import { copyToClipboard } from '@/lib/utils/helpers'
+import { copyToClipboard, isGameExpired } from '@/lib/utils/helpers'
 import { toast } from 'sonner'
+import { WAITING_ROOM_TIMEOUT_MS } from '@/lib/constants'
 
 export default function GamePage() {
   const params = useParams()
@@ -26,6 +27,7 @@ export default function GamePage() {
   
   const autoJoinAttemptedRef = useRef(false)
   const [joinError, setJoinError] = useState<string | null>(null)
+  const [waitingRoomSecondsLeft, setWaitingRoomSecondsLeft] = useState<number | null>(null)
   
   const storedOptions = useMemo(() => {
     const urlTC = searchParams.get('timeControl')
@@ -96,10 +98,33 @@ export default function GamePage() {
     }
   }, [intent, game, game?.status, playerColor, isPeerLoading, joinGame, color])
 
+  // Host countdown: when waiting, show "Room expires in M:SS" and redirect when time runs out
+  useEffect(() => {
+    if (!game || game.status !== 'waiting') {
+      setWaitingRoomSecondsLeft(null)
+      return
+    }
+    const deadline = new Date(game.created_at).getTime() + WAITING_ROOM_TIMEOUT_MS
+    const update = () => {
+      const left = Math.ceil((deadline - Date.now()) / 1000)
+      if (left <= 0) {
+        if (playerColor) {
+          router.push('/')
+        }
+        setWaitingRoomSecondsLeft(0)
+        return
+      }
+      setWaitingRoomSecondsLeft(left)
+    }
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [game?.status, game?.created_at, playerColor, router])
+
   const handleCopyInviteLink = useCallback(async () => {
     const url = window.location.href
     await copyToClipboard(url)
-    toast.success('Invite link copied! Send it to your friend.')
+    toast.success('Invite link copied! Share it to start playing.')
   }, [])
 
   const handleJoinAsWhite = useCallback(async () => {
@@ -184,6 +209,23 @@ export default function GamePage() {
     )
   }
 
+  const isRoomExpired = isGameExpired(game)
+
+  if (isRoomExpired) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8 text-center space-y-4">
+            <p className="text-muted-foreground">This room has expired.</p>
+            <Button onClick={() => router.push('/')}>
+              Back to Lobby
+            </Button>
+          </CardContent>
+        </Card>
+      </main>
+    )
+  }
+
   const isWaitingForOpponent = game.status === 'waiting'
   const isSpectator = playerColor === null && game.status !== 'waiting'
   const viewColor = playerColor ?? 'white'
@@ -215,8 +257,13 @@ export default function GamePage() {
               <div className="flex flex-col items-center gap-4">
                 <p className="text-lg">Waiting for opponent...</p>
                 <p className="text-sm text-muted-foreground">
-                  Share the invite link with a friend to start playing
+                  Share the invite link to start playing
                 </p>
+                {waitingRoomSecondsLeft !== null && (
+                  <p className="text-xs text-muted-foreground">
+                    Room expires in {Math.floor(waitingRoomSecondsLeft / 60)}:{(waitingRoomSecondsLeft % 60).toString().padStart(2, '0')}
+                  </p>
+                )}
                 
                 {joinError && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
