@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useGameStore, ChatMessage } from '@/store/game-store'
 import { createInitialGame, processMove, tryJoinGame } from '@/lib/game-logic'
 import { recordGameResult } from '@/lib/game-results'
@@ -28,7 +28,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   
-  const supabase = createBrowserSupabase()
+  const supabase = useMemo(() => createBrowserSupabase(), [])
   const pollRef = useRef<NodeJS.Timeout | null>(null)
   const isHostRef = useRef(false)
   const lastMoveIndexRef = useRef(0)
@@ -223,7 +223,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
 
         if (latestGame) setGame(latestGame)
         if (latestState) setGameState(latestState)
-        if (latestMoves && latestMoves.length !== moves.length) {
+        if (latestMoves && latestMoves.length !== lastMoveIndexRef.current) {
           setMoves(latestMoves)
           lastMoveIndexRef.current = latestMoves.length
         }
@@ -245,7 +245,7 @@ export function usePeerGame(gameId: string, initialOptions?: { timeControl?: str
       }
       setIsConnected(false)
     }
-  }, [gameId, playerId, initialOptions, profile, setGame, setGameState, setMoves, setChatMessages, setPlayerColor, setIsConnected, moves.length, supabase])
+  }, [gameId, playerId, initialOptions, profile, setGame, setGameState, setMoves, setChatMessages, setPlayerColor, setIsConnected, supabase])
 
   // --- Public Interface ---
 

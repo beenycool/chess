@@ -118,7 +118,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   
   setBoardOrientation: (orientation) => set({ boardOrientation: orientation }),
   
-  setIsConnected: (connected) => set({ isConnected: connected }),
+  setIsConnected: (connected) =>
+    set((state) => (state.isConnected === connected ? state : { isConnected: connected })),
   
   setSelectedSquare: (square) => set({ selectedSquare: square }),
   
