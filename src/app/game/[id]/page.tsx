@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useEffect, useState, useRef } from 'react'
+import { useCallback, useMemo, useEffect, useState, useRef, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ import { copyToClipboard, isGameExpired } from '@/lib/utils/helpers'
 import { toast } from 'sonner'
 import { WAITING_ROOM_TIMEOUT_MS } from '@/lib/constants'
 
-export default function GamePage() {
+function GameContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -389,5 +389,21 @@ export default function GamePage() {
         />
       </div>
     </main>
+  )
+}
+
+export default function GamePage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8 text-center">
+            <div className="animate-pulse">Loading game...</div>
+          </CardContent>
+        </Card>
+      </main>
+    }>
+      <GameContent />
+    </Suspense>
   )
 }
