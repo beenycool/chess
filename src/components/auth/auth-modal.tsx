@@ -43,10 +43,14 @@ export function AuthModal() {
     setLoading(true)
 
     try {
+      const origin = typeof window !== 'undefined' && window.location && window.location.origin
+        ? window.location.origin
+        : ''
+
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `${origin}/auth/callback`,
         },
       })
       
@@ -61,6 +65,7 @@ export function AuthModal() {
       } else if (typeof error === 'object' && error !== null && 'message' in error) {
         message = String((error as any).message)
       }
+      console.error('Magic link error:', error)
       toast.error(message)
     } finally {
       setLoading(false)
@@ -86,11 +91,15 @@ export function AuthModal() {
       })
       if (error) throw error
       
+      if (!data.user) {
+        throw new Error('No user returned from anonymous sign in')
+      }
+
       // Check what username was actually assigned
       const { data: profile } = await supabase
         .from('profiles')
         .select('username')
-        .eq('id', data.user!.id)
+        .eq('id', data.user.id)
         .single()
       
       const assignedUsername = profile?.username || username.trim()
@@ -107,6 +116,7 @@ export function AuthModal() {
       } else if (typeof error === 'object' && error !== null && 'message' in error) {
         message = String((error as any).message)
       }
+      console.error('Anonymous auth error:', error)
       toast.error(message)
     } finally {
       setLoading(false)
